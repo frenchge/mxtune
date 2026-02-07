@@ -35,6 +35,485 @@ interface ConfigData {
   conditions?: string;
 }
 
+type ChatMode = "reglage_direct" | "pas_a_pas";
+
+type IntakeData = {
+  mode?: ChatMode;
+  sportType?: string;
+  terrainType?: string;
+  riderWeight?: number;
+  riderLevel?: string;
+  riderStyle?: string;
+  riderObjective?: string;
+  symptoms?: string;
+  confirmation?: boolean;
+};
+
+type ChatMessageRow = {
+  role: string;
+  content: string;
+  metadata?: {
+    config?: ConfigData;
+    protocol?: {
+      mode?: ChatMode;
+      step: "collecte" | "verification" | "proposition" | "test";
+      status: "missing_info" | "ready_for_config" | "config_generated";
+      missing?: string[];
+      note?: string;
+    };
+  };
+};
+
+const SPORT_KEYWORDS: Record<string, string[]> = {
+  enduro: ["enduro", "hard enduro"],
+  motocross: ["motocross", "cross", "mx"],
+  supermoto: ["supermoto"],
+  trail: ["trail", "balade"],
+  rally: ["rally", "rallye"],
+};
+
+const TERRAIN_KEYWORDS: Record<string, string[]> = {
+  sable: ["sable", "sablonneux", "dune"],
+  boue: ["boue", "boueux", "humide"],
+  dur: ["dur", "sec", "compact"],
+  rocailleux: ["rocailleux", "cailloux", "pierres", "rochers"],
+  neige: ["neige", "enneige", "snow", "glace", "verglas"],
+  mixte: ["mixte", "variable"],
+};
+
+const DEFAULT_DIRECT_PROFILE = {
+  riderWeight: 75,
+  riderLevel: "intermediaire",
+  riderStyle: "neutre",
+  riderObjective: "mixte",
+} as const;
+
+function normalizeText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function parseStructuredFields(text: string) {
+  const fields: Record<string, string> = {};
+  const lines = text.split(/\n|;/).map((line) => line.trim()).filter(Boolean);
+  for (const line of lines) {
+    const match = line.match(/^([a-zA-Z0-9_ -]+)\s*:\s*(.+)$/);
+    if (!match) continue;
+    const key = normalizeText(match[1]).replace(/\s+/g, "_");
+    fields[key] = match[2].trim();
+  }
+  return fields;
+}
+
+function parseMode(text: string) {
+  const normalized = normalizeText(text);
+  if (normalized.includes("reglage_direct") || normalized.includes("reglage direct") || normalized.includes("direct")) {
+    return "reglage_direct" as const;
+  }
+  if (normalized.includes("pas_a_pas") || normalized.includes("pas a pas") || normalized.includes("pas-a-pas")) {
+    return "pas_a_pas" as const;
+  }
+  return undefined;
+}
+
+function findByKeywords(text: string, map: Record<string, string[]>) {
+  const normalized = normalizeText(text);
+  for (const [key, keywords] of Object.entries(map)) {
+    if (keywords.some((keyword) => normalized.includes(normalizeText(keyword)))) {
+      return key;
+    }
+  }
+  return undefined;
+}
+
+function parseWeight(text: string) {
+  const match = text.match(/(\d{2,3})\s?(kg|kilos?|kilogrammes?)/i);
+  if (!match) return undefined;
+  const value = Number(match[1]);
+  if (value < 40 || value > 180) return undefined;
+  return value;
+}
+
+function parseLevel(text: string) {
+  const normalized = normalizeText(text);
+  if (normalized.includes("debutant")) return "debutant";
+  if (normalized.includes("intermediaire")) return "intermediaire";
+  if (normalized.includes("confirme")) return "confirme";
+  if (normalized.includes("expert")) return "expert";
+  return undefined;
+}
+
+function parseStyle(text: string) {
+  const normalized = normalizeText(text);
+  if (normalized.includes("agressif")) return "agressif";
+  if (normalized.includes("souple")) return "souple";
+  if (normalized.includes("neutre")) return "neutre";
+  return undefined;
+}
+
+function parseObjective(text: string) {
+  const normalized = normalizeText(text);
+  if (normalized.includes("confort")) return "confort";
+  if (normalized.includes("performance")) return "performance";
+  if (normalized.includes("mixte")) return "mixte";
+  return undefined;
+}
+
+function parseSymptoms(text: string) {
+  const normalized = normalizeText(text);
+  const symptomWords = [
+    "plonge",
+    "talonne",
+    "rebondit",
+    "tape",
+    "guidonne",
+    "traction",
+    "instable",
+    "dur",
+    "mou",
+  ];
+  if (!symptomWords.some((word) => normalized.includes(word))) return undefined;
+  return text.trim();
+}
+
+function extractIntakeFromMessages(
+  history: ChatMessageRow[],
+  defaults: IntakeData
+): IntakeData {
+  let intake: IntakeData = { ...defaults };
+
+  for (const message of history) {
+    if (message.role !== "user") continue;
+    const text = message.content;
+    const fields = parseStructuredFields(text);
+    const modeFromStructured = fields.mode ? parseMode(fields.mode) : undefined;
+    const sportFromStructured = fields.sport || fields.sport_type;
+    const terrainFromStructured = fields.terrain || fields.terrain_type;
+    const weightFromStructured = fields.poids ? parseWeight(`${fields.poids} kg`) ?? parseWeight(fields.poids) : undefined;
+    const levelFromStructured = fields.niveau ? parseLevel(fields.niveau) : undefined;
+    const styleFromStructured = fields.style ? parseStyle(fields.style) : undefined;
+    const objectiveFromStructured = fields.objectif ? parseObjective(fields.objectif) : undefined;
+    const confirmationFromStructured = fields.confirmation
+      ? ["oui", "ok", "valide", "confirme"].some((value) =>
+          normalizeText(fields.confirmation || "").includes(value)
+        )
+      : undefined;
+
+    intake = {
+      ...intake,
+      mode: modeFromStructured ?? parseMode(text) ?? intake.mode,
+      sportType:
+        (sportFromStructured ? findByKeywords(sportFromStructured, SPORT_KEYWORDS) : undefined) ??
+        findByKeywords(text, SPORT_KEYWORDS) ??
+        intake.sportType,
+      terrainType:
+        (terrainFromStructured ? findByKeywords(terrainFromStructured, TERRAIN_KEYWORDS) : undefined) ??
+        findByKeywords(text, TERRAIN_KEYWORDS) ??
+        intake.terrainType,
+      riderWeight: weightFromStructured ?? parseWeight(text) ?? intake.riderWeight,
+      riderLevel: levelFromStructured ?? parseLevel(text) ?? intake.riderLevel,
+      riderStyle: styleFromStructured ?? parseStyle(text) ?? intake.riderStyle,
+      riderObjective: objectiveFromStructured ?? parseObjective(text) ?? intake.riderObjective,
+      symptoms: parseSymptoms(text) ?? intake.symptoms,
+      confirmation:
+        confirmationFromStructured ??
+        (normalizeText(text).includes("je confirme") || normalizeText(text).includes("oui je confirme"))
+          ? true
+          : intake.confirmation,
+    };
+  }
+
+  return intake;
+}
+
+function clampValue(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function buildDeterministicConfig(
+  intake: IntakeData,
+  selectedKit: {
+    name: string;
+    baseForkCompression?: number;
+    baseForkRebound?: number;
+    baseShockCompressionLow?: number;
+    baseShockCompressionHigh?: number;
+    baseShockRebound?: number;
+    forkCompression?: number;
+    forkRebound?: number;
+    shockCompressionLow?: number;
+    shockCompressionHigh?: number;
+    shockRebound?: number;
+    maxForkCompression?: number;
+    maxForkRebound?: number;
+    maxShockCompressionLow?: number;
+    maxShockCompressionHigh?: number;
+    maxShockRebound?: number;
+  }
+): ConfigData {
+  const sportType = intake.sportType || "enduro";
+  const terrainType = intake.terrainType || "mixte";
+  const baseForkCompression =
+    selectedKit.baseForkCompression ?? selectedKit.forkCompression ?? 12;
+  const baseForkRebound =
+    selectedKit.baseForkRebound ?? selectedKit.forkRebound ?? 12;
+  const baseShockCompressionLow =
+    selectedKit.baseShockCompressionLow ?? selectedKit.shockCompressionLow ?? 12;
+  const baseShockCompressionHigh =
+    selectedKit.baseShockCompressionHigh ?? selectedKit.shockCompressionHigh ?? 1.5;
+  const baseShockRebound =
+    selectedKit.baseShockRebound ?? selectedKit.shockRebound ?? 12;
+
+  let forkCompression = baseForkCompression;
+  let forkRebound = baseForkRebound;
+  let shockCompressionLow = baseShockCompressionLow;
+  let shockCompressionHigh = baseShockCompressionHigh;
+  let shockRebound = baseShockRebound;
+
+  const terrainAdjustments: Record<
+    string,
+    Partial<Record<"forkCompression" | "forkRebound" | "shockCompressionLow" | "shockCompressionHigh" | "shockRebound", number>>
+  > = {
+    sable: { forkCompression: -2, forkRebound: -1, shockCompressionLow: -2, shockCompressionHigh: -0.5, shockRebound: -1 },
+    boue: { forkCompression: -1, forkRebound: 0, shockCompressionLow: -1, shockCompressionHigh: -0.5, shockRebound: 0 },
+    dur: { forkCompression: 1, forkRebound: 1, shockCompressionLow: 1, shockCompressionHigh: 0.5, shockRebound: 1 },
+    rocailleux: { forkCompression: -1, forkRebound: 1, shockCompressionLow: -1, shockCompressionHigh: 0, shockRebound: 1 },
+    neige: { forkCompression: -2, forkRebound: -1, shockCompressionLow: -2, shockCompressionHigh: -0.5, shockRebound: -1 },
+    mixte: {},
+  };
+
+  const terrainDelta = terrainAdjustments[terrainType] || {};
+  forkCompression += terrainDelta.forkCompression ?? 0;
+  forkRebound += terrainDelta.forkRebound ?? 0;
+  shockCompressionLow += terrainDelta.shockCompressionLow ?? 0;
+  shockCompressionHigh += terrainDelta.shockCompressionHigh ?? 0;
+  shockRebound += terrainDelta.shockRebound ?? 0;
+
+  if (intake.riderWeight !== undefined) {
+    if (intake.riderWeight >= 95) {
+      forkCompression += 1;
+      shockCompressionLow += 1;
+    } else if (intake.riderWeight <= 65) {
+      forkCompression -= 1;
+      shockCompressionLow -= 1;
+    }
+  }
+
+  if (intake.riderObjective === "confort") {
+    forkCompression -= 1;
+    shockCompressionLow -= 1;
+  } else if (intake.riderObjective === "performance") {
+    forkCompression += 1;
+    shockCompressionLow += 1;
+    forkRebound += 1;
+    shockRebound += 1;
+  }
+
+  if (intake.riderStyle === "agressif") {
+    forkCompression += 1;
+    shockCompressionHigh += 0.5;
+  } else if (intake.riderStyle === "souple") {
+    forkCompression -= 1;
+    shockCompressionLow -= 1;
+  }
+
+  const maxForkCompression = selectedKit.maxForkCompression ?? 25;
+  const maxForkRebound = selectedKit.maxForkRebound ?? 25;
+  const maxShockCompressionLow = selectedKit.maxShockCompressionLow ?? 25;
+  const maxShockCompressionHigh = selectedKit.maxShockCompressionHigh ?? 4;
+  const maxShockRebound = selectedKit.maxShockRebound ?? 25;
+
+  const staticSag = sportType === "motocross" ? 33 : 35;
+  const dynamicSag = sportType === "motocross" ? 102 : 105;
+  const tirePressureFront =
+    terrainType === "sable" ? 0.8 : terrainType === "boue" ? 0.85 : terrainType === "neige" ? 0.75 : 0.95;
+  const tirePressureRear =
+    terrainType === "sable" ? 0.75 : terrainType === "boue" ? 0.8 : terrainType === "neige" ? 0.7 : 0.9;
+  const forkPreload = sportType === "motocross" ? "+2mm" : "standard";
+  const shockPreload = sportType === "motocross" ? "+2 tours" : "standard";
+
+  return {
+    name: `Config ${sportType} ${terrainType}`,
+    description: `Configuration préparée pour ${sportType} sur terrain ${terrainType}.`,
+    sportType,
+    terrainType,
+    forkCompression: clampValue(Math.round(forkCompression), 0, maxForkCompression),
+    forkRebound: clampValue(Math.round(forkRebound), 0, maxForkRebound),
+    forkPreload,
+    shockCompressionLow: clampValue(Math.round(shockCompressionLow), 0, maxShockCompressionLow),
+    shockCompressionHigh: Number(clampValue(Number(shockCompressionHigh.toFixed(1)), 0, maxShockCompressionHigh).toFixed(1)),
+    shockRebound: clampValue(Math.round(shockRebound), 0, maxShockRebound),
+    shockPreload,
+    staticSag,
+    dynamicSag,
+    tirePressureFront,
+    tirePressureRear,
+    conditions:
+      terrainType === "boue" ? "boueux" : terrainType === "neige" ? "neigeux" : terrainType === "sable" ? "sec" : "sec",
+  };
+}
+
+function applyFeedbackAdjustments(config: ConfigData, message: string): ConfigData {
+  const normalized = normalizeText(message);
+  const updated = { ...config };
+
+  if (normalized.includes("plonge")) {
+    updated.forkCompression = (updated.forkCompression ?? 12) + 1;
+  }
+  if (normalized.includes("talonne")) {
+    updated.shockCompressionLow = (updated.shockCompressionLow ?? 12) + 1;
+    updated.shockCompressionHigh = Number(((updated.shockCompressionHigh ?? 1.5) + 0.5).toFixed(1));
+  }
+  if (normalized.includes("rebond") || normalized.includes("instable")) {
+    updated.shockRebound = (updated.shockRebound ?? 12) + 1;
+    updated.forkRebound = (updated.forkRebound ?? 12) + 1;
+  }
+  if (normalized.includes("dur") || normalized.includes("tape")) {
+    updated.forkCompression = (updated.forkCompression ?? 12) - 1;
+    updated.shockCompressionLow = (updated.shockCompressionLow ?? 12) - 1;
+  }
+  if (normalized.includes("mou") || normalized.includes("manque de maintien")) {
+    updated.forkCompression = (updated.forkCompression ?? 12) + 1;
+    updated.shockCompressionLow = (updated.shockCompressionLow ?? 12) + 1;
+  }
+
+  return updated;
+}
+
+function getMissingFieldQuestion(
+  missingField:
+    | "moto"
+    | "kit"
+    | "mode"
+    | "sportType"
+    | "terrainType"
+    | "riderWeight"
+    | "riderLevel"
+    | "riderStyle"
+    | "riderObjective"
+    | "confirmation",
+  mode?: ChatMode
+) {
+  const prompts: Record<typeof missingField, string> = {
+    moto: "Choisis d'abord une moto dans le sélecteur en bas.",
+    kit: "Choisis d'abord un kit dans le sélecteur en bas.",
+    mode: "Choisis ton mode de préparation.",
+    sportType: "Quel est ton usage principal ?",
+    terrainType: "Quel est ton terrain principal ?",
+    riderWeight: "Quel est ton poids équipé (en kg) ?",
+    riderLevel: "Quel est ton niveau ?",
+    riderStyle: "Quel est ton style de pilotage ?",
+    riderObjective: "Quel est ton objectif principal ?",
+    confirmation: "Confirme les données pour générer la config.",
+  };
+
+  if (missingField === "confirmation" && mode === "reglage_direct") {
+    return "Mode réglage direct prêt. Confirme pour générer la config.";
+  }
+
+  return prompts[missingField];
+}
+
+function getFieldButtons(field: "mode" | "sportType" | "terrainType" | "riderLevel" | "riderStyle" | "riderObjective" | "confirmation") {
+  switch (field) {
+    case "mode":
+      return [
+        "[BUTTON:Réglage direct|Rapide pour pilotes expérimentés:reglage_direct]",
+        "[BUTTON:Pas à pas|Guide détaillé pour moins expérimentés:pas_a_pas]",
+      ].join("\n");
+    case "sportType":
+      return [
+        "[BUTTON:Enduro:enduro]",
+        "[BUTTON:Motocross:motocross]",
+        "[BUTTON:Supermoto:supermoto]",
+        "[BUTTON:Trail:trail]",
+      ].join("\n");
+    case "terrainType":
+      return [
+        "[BUTTON:Sable:sable]",
+        "[BUTTON:Boue:boue]",
+        "[BUTTON:Dur:dur]",
+        "[BUTTON:Rocailleux:rocailleux]",
+        "[BUTTON:Neige:neige]",
+        "[BUTTON:Mixte:mixte]",
+      ].join("\n");
+    case "riderLevel":
+      return [
+        "[BUTTON:Debutant:debutant]",
+        "[BUTTON:Intermediaire:intermediaire]",
+        "[BUTTON:Confirme:confirme]",
+        "[BUTTON:Expert:expert]",
+      ].join("\n");
+    case "riderStyle":
+      return [
+        "[BUTTON:Neutre:neutre]",
+        "[BUTTON:Agressif:agressif]",
+        "[BUTTON:Souple:souple]",
+      ].join("\n");
+    case "riderObjective":
+      return [
+        "[BUTTON:Confort:confort]",
+        "[BUTTON:Performance:performance]",
+        "[BUTTON:Mixte:mixte]",
+      ].join("\n");
+    case "confirmation":
+      return "[BUTTON:Confirmer les données|Générer la config:confirmation_oui]";
+  }
+}
+
+const FIELDS_WITH_BUTTONS = new Set([
+  "mode",
+  "sportType",
+  "terrainType",
+  "riderLevel",
+  "riderStyle",
+  "riderObjective",
+  "confirmation",
+] as const);
+
+function hasButtonsForField(
+  field:
+    | "moto"
+    | "kit"
+    | "mode"
+    | "sportType"
+    | "terrainType"
+    | "riderWeight"
+    | "riderLevel"
+    | "riderStyle"
+    | "riderObjective"
+    | "confirmation"
+): field is "mode" | "sportType" | "terrainType" | "riderLevel" | "riderStyle" | "riderObjective" | "confirmation" {
+  return FIELDS_WITH_BUTTONS.has(
+    field as
+      | "mode"
+      | "sportType"
+      | "terrainType"
+      | "riderLevel"
+      | "riderStyle"
+      | "riderObjective"
+      | "confirmation"
+  );
+}
+
+function buildProtocolMetadata(params: {
+  mode?: ChatMode;
+  step: "collecte" | "verification" | "proposition" | "test";
+  status: "missing_info" | "ready_for_config" | "config_generated";
+  missing?: string[];
+  note?: string;
+}) {
+  return {
+    mode: params.mode,
+    step: params.step,
+    status: params.status,
+    missing: params.missing,
+    note: params.note,
+  };
+}
+
 export default function ChatPage() {
   const params = useParams();
   const conversationId = params.conversationId as Id<"conversations">;
@@ -43,6 +522,7 @@ export default function ChatPage() {
   const [selectedMotoId, setSelectedMotoId] = useState<Id<"motos"> | undefined>();
   const [selectedKitId, setSelectedKitId] = useState<Id<"suspensionKits"> | undefined>();
   const [savedConfigId, setSavedConfigId] = useState<string | undefined>();
+  const [pendingGeneratedConfig, setPendingGeneratedConfig] = useState<ConfigData | undefined>();
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -96,13 +576,15 @@ export default function ChatPage() {
   // Message de bienvenue initial
   useEffect(() => {
     if (conversation && messages?.length === 0) {
-      const welcomeMessage = `Bonjour ! Je suis ton expert en réglage de suspensions moto tout-terrain. Que tu sois sur un terrain de cross défoncé ou dans une spéciale d'enduro technique, mon objectif est de t'aider à trouver le confort, la traction et la sécurité nécessaires pour rouler à ton meilleur niveau.
-
-Pour commencer, j'ai besoin de savoir comment tu souhaites procéder.
-
-[BUTTON:RÉGLAGE DIRECT|Je pilote déjà bien et je veux une aide rapide à partir de symptômes ou d'une pratique précise.:reglage_direct]
-
-[BUTTON:PAS-À-PAS|Je veux régler ma moto correctement depuis zéro avec explications et méthode.:pas_a_pas]`;
+      const welcomeMessage = [
+        "Je suis ton préparateur config.",
+        "Deux parcours possibles :",
+        "- reglage_direct: rapide pour pilotes expérimentés",
+        "- pas_a_pas: guide complet pour pilotes moins expérimentés",
+        "",
+        "[BUTTON:Réglage direct|Rapide pour pilotes expérimentés:reglage_direct]",
+        "[BUTTON:Pas à pas|Guide détaillé pour moins expérimentés:pas_a_pas]",
+      ].join("\n");
 
       createMessage({
         conversationId,
@@ -125,165 +607,236 @@ Pour commencer, j'ai besoin de savoir comment tu souhaites procéder.
     });
 
     try {
-      // Construire le contexte avec la moto et le kit sélectionnés
-      let motoContext = "";
-      
-      if (selectedMoto) {
-        motoContext = `=== MOTO SÉLECTIONNÉE ===
-- Marque: ${selectedMoto.brand}
-- Modèle: ${selectedMoto.model}
-- Année: ${selectedMoto.year}
-- Suspensions: ${selectedMoto.isStockSuspension ? "D'ORIGINE (stock)" : "MODIFIÉES (aftermarket)"}`;
-        
-        if (selectedMoto.forkBrand) {
-          motoContext += `
-- Fourche: ${selectedMoto.forkBrand} ${selectedMoto.forkModel || ""}`;
-        }
-        if (selectedMoto.shockBrand) {
-          motoContext += `
-- Amortisseur: ${selectedMoto.shockBrand} ${selectedMoto.shockModel || ""}`;
-        }
-        if (selectedMoto.suspensionNotes) {
-          motoContext += `
-- Notes suspensions: ${selectedMoto.suspensionNotes}`;
-        }
+      const history: ChatMessageRow[] = [
+        ...((messages || []) as ChatMessageRow[]),
+        { role: "user", content },
+      ];
+
+      const defaults: IntakeData = {
+        sportType: selectedKit?.sportType,
+        terrainType: selectedKit?.terrainType,
+        riderWeight: user.weight,
+        riderLevel: user.level,
+        riderStyle: user.style,
+        riderObjective: user.objective,
+      };
+
+      const intake = extractIntakeFromMessages(history, defaults);
+      if (intake.mode === "reglage_direct") {
+        intake.riderWeight = intake.riderWeight ?? user.weight ?? DEFAULT_DIRECT_PROFILE.riderWeight;
+        intake.riderLevel = intake.riderLevel ?? user.level ?? DEFAULT_DIRECT_PROFILE.riderLevel;
+        intake.riderStyle = intake.riderStyle ?? user.style ?? DEFAULT_DIRECT_PROFILE.riderStyle;
+        intake.riderObjective = intake.riderObjective ?? user.objective ?? DEFAULT_DIRECT_PROFILE.riderObjective;
+      }
+      const lastConfigMessage = [...history]
+        .reverse()
+        .find((message) => message.role === "assistant" && message.metadata?.config);
+      const hasExistingConfig = Boolean(lastConfigMessage?.metadata?.config);
+      const isAdjustmentIntent = /ajuste|modifier|modifie|plus|moins|plonge|talonne|rebond|instable|dur|mou|tape|guidonne|traction/i.test(
+        content
+      );
+      const useExistingConfigLoop = hasExistingConfig && (conversation?.step === "test" || conversation?.step === "proposition");
+
+      if (useExistingConfigLoop && isAdjustmentIntent) {
+        const baseConfig = lastConfigMessage?.metadata?.config as ConfigData;
+        const adjustedConfig = applyFeedbackAdjustments(baseConfig, content);
+        adjustedConfig.name = `${adjustedConfig.name || "Config"} - Ajustement`;
+        setPendingGeneratedConfig(adjustedConfig);
+
+        await updateStep({ conversationId, step: "proposition" });
+        await createMessage({
+          conversationId,
+          role: "assistant",
+          content: [
+            "Ajustement applique sur la config actuelle.",
+            "",
+            "[BUTTON:Sauvegarder la config|Enregistrer cette config dans la base:save_generated_config]",
+            "[BUTTON:Continuer le test|Donner un nouveau ressenti:tester_config]",
+            "[BUTTON:Generer une autre config|Relancer avec d'autres parametres:restart_config]",
+          ].join("\n"),
+          metadata: {
+            config: adjustedConfig,
+            protocol: buildProtocolMetadata({
+              mode: intake.mode,
+              step: "proposition",
+              status: "config_generated",
+              note: "Config ajustée prête. Sauvegarde ou poursuite du test.",
+            }),
+          },
+        });
+        return;
       }
 
-      // Ajouter le contexte du kit sélectionné avec toutes les infos de réglages
-      if (selectedKit) {
-        motoContext += `
-
-=== KIT SÉLECTIONNÉ: "${selectedKit.name}" ===`;
-        if (selectedKit.description) motoContext += `\n- Description: ${selectedKit.description}`;
-        if (selectedKit.terrainType) motoContext += `\n- Terrain: ${selectedKit.terrainType}`;
-        if (selectedKit.sportType) motoContext += `\n- Sport: ${selectedKit.sportType}`;
-        if (selectedKit.country) motoContext += `\n- Pays/Région: ${selectedKit.country}`;
-        if (selectedKit.conditions) motoContext += `\n- Conditions: ${selectedKit.conditions}`;
-        motoContext += `\n- Type suspensions: ${selectedKit.isStockSuspension ? "Origine" : "Modifiées/Aftermarket"}`;
-        
-        // Infos suspensions du kit
-        if (!selectedKit.isStockSuspension) {
-          if (selectedKit.forkBrand) motoContext += `\n- Fourche kit: ${selectedKit.forkBrand} ${selectedKit.forkModel || ""}`;
-          if (selectedKit.shockBrand) motoContext += `\n- Amortisseur kit: ${selectedKit.shockBrand} ${selectedKit.shockModel || ""}`;
-        }
-        
-        // Spécifications techniques
-        if (selectedKit.forkSpringRate) motoContext += `\n- Ressort fourche: ${selectedKit.forkSpringRate}`;
-        if (selectedKit.shockSpringRate) motoContext += `\n- Ressort amortisseur: ${selectedKit.shockSpringRate}`;
-        if (selectedKit.forkOilWeight) motoContext += `\n- Huile fourche: ${selectedKit.forkOilWeight}`;
-        if (selectedKit.forkOilLevel) motoContext += `\n- Niveau huile: ${selectedKit.forkOilLevel}`;
-        if (selectedKit.valvingNotes) motoContext += `\n- Notes pistonage: ${selectedKit.valvingNotes}`;
-        if (selectedKit.otherMods) motoContext += `\n- Autres mods: ${selectedKit.otherMods}`;
-        
-        // Plages de clics max
-        if (selectedKit.maxForkCompression || selectedKit.maxForkRebound) {
-          motoContext += `
-
-=== PLAGES DE RÉGLAGES ===`;
-          if (selectedKit.maxForkCompression) motoContext += `\n- Compression fourche: 0-${selectedKit.maxForkCompression} clics`;
-          if (selectedKit.maxForkRebound) motoContext += `\n- Détente fourche: 0-${selectedKit.maxForkRebound} clics`;
-          if (selectedKit.maxShockCompressionLow) motoContext += `\n- Compression BV amortisseur: 0-${selectedKit.maxShockCompressionLow} clics`;
-          if (selectedKit.maxShockCompressionHigh) motoContext += `\n- Compression HV amortisseur: 0-${selectedKit.maxShockCompressionHigh} tours`;
-          if (selectedKit.maxShockRebound) motoContext += `\n- Détente amortisseur: 0-${selectedKit.maxShockRebound} clics`;
-        }
-        
-        // Réglages de base (référence usine)
-        if (selectedKit.baseForkCompression !== undefined) {
-          motoContext += `
-
-=== RÉGLAGES DE BASE (référence) ===`;
-          motoContext += `\n- Compression fourche: ${selectedKit.baseForkCompression} clics`;
-          if (selectedKit.baseForkRebound !== undefined) motoContext += `\n- Détente fourche: ${selectedKit.baseForkRebound} clics`;
-          if (selectedKit.baseShockCompressionLow !== undefined) motoContext += `\n- Compression BV amortisseur: ${selectedKit.baseShockCompressionLow} clics`;
-          if (selectedKit.baseShockCompressionHigh !== undefined) motoContext += `\n- Compression HV amortisseur: ${selectedKit.baseShockCompressionHigh} tours`;
-          if (selectedKit.baseShockRebound !== undefined) motoContext += `\n- Détente amortisseur: ${selectedKit.baseShockRebound} clics`;
-        }
-        
-        // Réglages actuels du pilote
-        if (selectedKit.forkCompression !== undefined || selectedKit.forkRebound !== undefined) {
-          motoContext += `
-
-=== RÉGLAGES ACTUELS DU PILOTE ===`;
-          if (selectedKit.forkCompression !== undefined) motoContext += `\n- Compression fourche: ${selectedKit.forkCompression} clics`;
-          if (selectedKit.forkRebound !== undefined) motoContext += `\n- Détente fourche: ${selectedKit.forkRebound} clics`;
-          if (selectedKit.shockCompressionLow !== undefined) motoContext += `\n- Compression BV amortisseur: ${selectedKit.shockCompressionLow} clics`;
-          if (selectedKit.shockCompressionHigh !== undefined) motoContext += `\n- Compression HV amortisseur: ${selectedKit.shockCompressionHigh} tours`;
-          if (selectedKit.shockRebound !== undefined) motoContext += `\n- Détente amortisseur: ${selectedKit.shockRebound} clics`;
-        }
+      if (useExistingConfigLoop && !isAdjustmentIntent) {
+        await updateStep({ conversationId, step: "test" });
+        await createMessage({
+          conversationId,
+          role: "assistant",
+          content:
+            "La config est déjà préparée. Donne ton ressenti terrain (ex: fourche plonge, arrière talonne, manque de traction) pour ajuster.",
+          metadata: {
+            protocol: buildProtocolMetadata({
+              mode: intake.mode,
+              step: "test",
+              status: "ready_for_config",
+              note: "Ajustement en cours d'essai terrain.",
+            }),
+          },
+        });
+        return;
       }
 
-      // Appeler l'API Clarifai
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [{ role: "user", content }],
-          conversationHistory: messages,
-          motoContext,
-          userProfile: user,
-        }),
-      });
+      const missingFields: Array<
+        | "moto"
+        | "kit"
+        | "mode"
+        | "sportType"
+        | "terrainType"
+        | "riderWeight"
+        | "riderLevel"
+        | "riderStyle"
+        | "riderObjective"
+        | "confirmation"
+      > = [];
 
-      const data = await response.json();
-
-      if (data.error) {
-        throw new Error(data.error);
+      if (!selectedMoto) missingFields.push("moto");
+      if (!selectedKit) missingFields.push("kit");
+      if (!intake.mode) missingFields.push("mode");
+      if (!intake.sportType) missingFields.push("sportType");
+      if (!intake.terrainType) missingFields.push("terrainType");
+      if (intake.mode === "pas_a_pas") {
+        if (!intake.riderWeight) missingFields.push("riderWeight");
+        if (!intake.riderLevel) missingFields.push("riderLevel");
+        if (!intake.riderStyle) missingFields.push("riderStyle");
+        if (!intake.riderObjective) missingFields.push("riderObjective");
       }
 
-      // Créer le message de l'assistant
+      if (intake.mode) {
+        await updateStep({
+          conversationId,
+          step: "collecte",
+          configMode: intake.mode,
+        });
+      }
+
+      if (missingFields.length > 0) {
+        await updateStep({ conversationId, step: "collecte" });
+        const firstMissing = missingFields[0];
+        await createMessage({
+          conversationId,
+          role: "assistant",
+          content: [
+            getMissingFieldQuestion(firstMissing, intake.mode),
+            "",
+            hasButtonsForField(firstMissing)
+              ? getFieldButtons(firstMissing)
+              : "",
+          ].join("\n"),
+          metadata: {
+            protocol: buildProtocolMetadata({
+              mode: intake.mode,
+              step: "collecte",
+              status: "missing_info",
+              missing: missingFields,
+              note: "Une reponse utilisateur est attendue.",
+            }),
+          },
+        });
+        return;
+      }
+
+      const motoForConfig = selectedMoto;
+      const kitForConfig = selectedKit;
+      if (!motoForConfig || !kitForConfig) {
+        await createMessage({
+          conversationId,
+          role: "assistant",
+          content: "Je n'ai pas de moto/kit actif pour continuer. Sélectionne-les puis renvoie ton message.",
+        });
+        return;
+      }
+
+      await updateStep({ conversationId, step: "verification" });
+
+      if (!intake.confirmation) {
+        await createMessage({
+          conversationId,
+          role: "assistant",
+          content: [
+            "Vérification terminée. Confirme pour générer la config.",
+            "",
+            getFieldButtons("confirmation"),
+          ].join("\n"),
+          metadata: {
+            protocol: buildProtocolMetadata({
+              mode: intake.mode,
+              step: "verification",
+              status: "ready_for_config",
+              note: "Validation explicite requise avant génération.",
+            }),
+          },
+        });
+        return;
+      }
+
+      const verificationSummary = [
+        "Vérification",
+        `Moto: ${motoForConfig.brand} ${motoForConfig.model} ${motoForConfig.year}`,
+        `Kit: ${kitForConfig.name}`,
+        `Poids équipé: ${intake.riderWeight} kg`,
+        `Niveau: ${intake.riderLevel}`,
+        `Objectif: ${intake.riderObjective}`,
+        `Sport/Terrain: ${intake.sportType} / ${intake.terrainType}`,
+      ].join("\n");
+
       await createMessage({
         conversationId,
         role: "assistant",
-        content: data.response,
-        metadata: data.config ? { config: data.config } : undefined,
+        content: verificationSummary,
+        metadata: {
+          protocol: buildProtocolMetadata({
+            mode: intake.mode,
+            step: "verification",
+            status: "ready_for_config",
+            note: "Generation de config en cours.",
+          }),
+        },
       });
 
-      // Déterminer l'étape en fonction du contenu de manière progressive
-      const lowerContent = content.toLowerCase();
-      const lowerResponse = data.response.toLowerCase();
-      const currentStep = conversation?.step || "collecte";
-
-      // Logique de progression basée sur l'étape actuelle et le contenu
-      let nextStep = currentStep;
-
-      if (currentStep === "collecte") {
-        // Si l'utilisateur choisit le mode (rapide/direct ou pas-à-pas)
-        if (lowerContent.includes("rapide") || lowerContent.includes("direct") || lowerContent.includes("pas-à-pas") || lowerContent.includes("complet")) {
-          await updateStep({
-            conversationId,
-            step: "collecte",
-            configMode: (lowerContent.includes("rapide") || lowerContent.includes("direct")) ? "rapide" : "pas-a-pas",
-          });
-        }
-        
-        // Si l'utilisateur répond à la question terrain (pas juste l'IA qui pose la question)
-        // et que l'IA propose ensuite des réglages (data.config présent)
-        if (data.config) {
-          // L'IA a généré une config = on passe à proposition directement
-          // (en mode direct, les étapes sont condensées)
-          nextStep = "proposition";
-        } else if (
-          !lowerResponse.includes("type de terrain") && 
-          !lowerResponse.includes("quel terrain") &&
-          (lowerResponse.includes("vérifions") || lowerResponse.includes("vérification"))
-        ) {
-          nextStep = "verification";
-        }
-      } else if (currentStep === "verification") {
-        if (data.config) {
-          nextStep = "proposition";
-        }
-      } else if (currentStep === "proposition") {
-        // Passer à test seulement si l'IA demande explicitement un retour après essai
-        if (lowerResponse.includes("après ton essai") || lowerResponse.includes("dis-moi comment ça se passe")) {
-          nextStep = "test";
-        }
+      const baseConfig = hasExistingConfig
+        ? (lastConfigMessage?.metadata?.config as ConfigData)
+        : buildDeterministicConfig(intake, kitForConfig);
+      const config = isAdjustmentIntent
+        ? applyFeedbackAdjustments(baseConfig, content)
+        : baseConfig;
+      if (isAdjustmentIntent) {
+        config.name = `${config.name || "Config"} - Ajustement`;
       }
+      setPendingGeneratedConfig(config);
 
-      // Mettre à jour l'étape si elle a changé
-      if (nextStep !== currentStep) {
-        await updateStep({ conversationId, step: nextStep });
-      }
+      await updateStep({ conversationId, step: "proposition" });
+      await createMessage({
+        conversationId,
+        role: "assistant",
+        content:
+          [
+            isAdjustmentIntent
+              ? "Ajustement appliqué et version enregistrée."
+              : "Config générée et enregistrée.",
+            "",
+            "[BUTTON:Sauvegarder la config|Enregistrer cette config dans la base:save_generated_config]",
+            "[BUTTON:Generer une autre config|Relancer avec d'autres parametres:restart_config]",
+          ].join("\n"),
+        metadata: {
+          config,
+          protocol: buildProtocolMetadata({
+            mode: intake.mode,
+            step: "proposition",
+            status: "config_generated",
+            note: "Config prête. Sauvegarde ou génère une nouvelle config.",
+          }),
+        },
+      });
     } catch (error) {
       console.error("Erreur:", error);
       await createMessage({
@@ -300,10 +853,80 @@ Pour commencer, j'ai besoin de savoir comment tu souhaites procéder.
   const handleButtonClick = async (action: string, buttonText?: string) => {
     if (!user?._id || !conversationId) return;
 
+    if (action === "save_generated_config") {
+      const latestConfig =
+        pendingGeneratedConfig ||
+        [...(messages || [])]
+          .reverse()
+          .find((m) => m.role === "assistant" && m.metadata?.config)?.metadata?.config;
+
+      if (!latestConfig) {
+        await createMessage({
+          conversationId,
+          role: "assistant",
+          content: "Aucune config en attente à sauvegarder.",
+        });
+        return;
+      }
+
+      await handleSaveConfig(latestConfig);
+      setPendingGeneratedConfig(undefined);
+      await updateStep({ conversationId, step: "test" });
+      await createMessage({
+        conversationId,
+        role: "assistant",
+        content: [
+          "Config sauvegardée.",
+          "[BUTTON:Tester sur terrain|Je vais rouler puis revenir avec un feedback:tester_config]",
+          "[BUTTON:Générer une autre config|Je veux une variante:restart_config]",
+        ].join("\n"),
+      });
+      return;
+    }
+
+    if (action === "restart_config") {
+      setPendingGeneratedConfig(undefined);
+      await updateStep({ conversationId, step: "collecte" });
+      await createMessage({
+        conversationId,
+        role: "assistant",
+        content: [
+          "Parfait. On repart sur une nouvelle config.",
+          "Commence par choisir ton terrain et ton objectif.",
+          "",
+          getFieldButtons("terrainType"),
+          getFieldButtons("riderObjective"),
+        ].join("\n"),
+      });
+      return;
+    }
+
     // Mapper les actions vers des messages lisibles
     const actionMessages: Record<string, string> = {
-      reglage_direct: "Je choisis le réglage direct. Je pilote déjà bien et je veux une aide rapide.",
-      pas_a_pas: "Je choisis le mode pas-à-pas. Je veux régler ma moto correctement depuis zéro avec explications.",
+      confirmation_oui: "Oui, je confirme ces informations. Tu peux générer la config.",
+      tester_config: "Je vais tester cette config sur terrain et je reviens avec mon ressenti.",
+      ajuster_config: "J'ai ce symptome: la fourche plonge au freinage.",
+      enduro: "Mon usage principal est l'enduro.",
+      motocross: "Mon usage principal est le motocross.",
+      supermoto: "Mon usage principal est le supermoto.",
+      trail: "Mon usage principal est le trail.",
+      sable: "Je roule surtout sur terrain sable.",
+      boue: "Je roule surtout sur terrain boue.",
+      dur: "Je roule surtout sur terrain dur.",
+      rocailleux: "Je roule surtout sur terrain rocailleux.",
+      neige: "Je roule surtout sur terrain neige.",
+      mixte: "Je roule surtout sur terrain mixte.",
+      debutant: "Mon niveau est debutant.",
+      intermediaire: "Mon niveau est intermediaire.",
+      confirme: "Mon niveau est confirme.",
+      expert: "Mon niveau est expert.",
+      neutre: "Mon style de pilotage est neutre.",
+      agressif: "Mon style de pilotage est agressif.",
+      souple: "Mon style de pilotage est souple.",
+      confort: "Mon objectif principal est le confort.",
+      performance: "Mon objectif principal est la performance.",
+      reglage_direct: "Je choisis le mode réglage direct.",
+      pas_a_pas: "Je choisis le mode pas à pas.",
       next_step: "Je continue vers l'étape suivante.",
       confirm: "Je confirme ces informations.",
       rapide: "Je choisis la configuration rapide.",
@@ -331,6 +954,7 @@ Pour commencer, j'ai besoin de savoir comment tu souhaites procéder.
     const configName = config.name || `Config ${selectedMoto?.brand || ""} ${selectedMoto?.model || ""} - ${new Date().toLocaleDateString("fr-FR")}`;
 
     const result = await createConfig({
+      userId: user._id,
       motoId: selectedMotoId,
       suspensionKitId: selectedKitId,
       conversationId,
@@ -401,13 +1025,12 @@ Pour commencer, j'ai besoin de savoir comment tu souhaites procéder.
         <SidebarProvider>
           <AppSidebar />
           <SidebarInset className="flex flex-col h-screen bg-zinc-950">
-            {/* Header avec étapes amélioré */}
-            <div className="border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-sm shrink-0 py-4">
-              <ChatStepsEnhanced currentStep={conversation?.step || "collecte"} />
-            </div>
-
             <div className="flex flex-1 overflow-hidden">
               <div className="flex-1 flex flex-col min-h-0">
+                {/* Process central entre la sidebar gauche et le panneau profil */}
+                <div className="border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-sm shrink-0 py-4">
+                  <ChatStepsEnhanced currentStep={conversation?.step || "collecte"} />
+                </div>
                 <div className="flex-1 overflow-y-auto">
                   <div className="max-w-3xl mx-auto px-4 pb-4">
                     {messages?.map((message) => (
@@ -416,7 +1039,6 @@ Pour commencer, j'ai besoin de savoir comment tu souhaites procéder.
                         message={message}
                         userImage={clerkUser?.imageUrl}
                         onButtonClick={handleButtonClick}
-                        onSaveConfig={handleSaveConfig}
                         onUpdateConfig={handleUpdateConfig}
                         savedConfigId={savedConfigId}
                         baseValues={selectedKit ? {

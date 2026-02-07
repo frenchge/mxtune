@@ -45,6 +45,10 @@ export function AppSidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const { user } = useCurrentUser();
+  const motos = useQuery(
+    api.motos.getByUser,
+    user?._id ? { userId: user._id } : "skip"
+  );
 
   const conversations = useQuery(
     api.conversations.getByUser,
@@ -53,6 +57,45 @@ export function AppSidebar() {
 
   const createConversation = useMutation(api.conversations.create);
   const deleteConversation = useMutation(api.conversations.remove);
+
+  React.useEffect(() => {
+    if (!user || motos === undefined) return;
+
+    const profileComplete =
+      typeof user.weight === "number" &&
+      Boolean(user.level) &&
+      Boolean(user.style) &&
+      Boolean(user.objective);
+    const hasMoto = motos.length > 0;
+
+    const onProfilPage = pathname === "/profil" || pathname.startsWith("/profil/");
+    const onMotosPage = pathname === "/motos" || pathname.startsWith("/motos/");
+    const onChatPage = pathname === "/chat" || pathname.startsWith("/chat/");
+    const onCommunityPage =
+      pathname === "/configs" ||
+      pathname.startsWith("/configs/") ||
+      pathname === "/motos-communaute" ||
+      pathname.startsWith("/motos-communaute/") ||
+      pathname.startsWith("/config/") ||
+      pathname.startsWith("/user/");
+
+    if (onCommunityPage) {
+      return;
+    }
+
+    if (onChatPage) {
+      return;
+    }
+
+    if (!profileComplete && !onProfilPage && !onMotosPage) {
+      router.replace("/profil");
+      return;
+    }
+
+    if (profileComplete && !hasMoto && !onMotosPage) {
+      router.replace("/motos");
+    }
+  }, [user, motos, pathname, router]);
 
   const handleNewConversation = async () => {
     if (!user?._id) return;

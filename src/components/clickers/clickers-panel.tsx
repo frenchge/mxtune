@@ -33,6 +33,7 @@ import {
   Clock,
   Trash2,
   Download,
+  Star,
 } from "lucide-react";
 import { BrandLogo } from "@/components/ui/brand-logo";
 import { getForkBrands, getShockBrands, getForkModelsForBrand, getShockModelsForBrand } from "@/data/suspension-brands";
@@ -75,6 +76,7 @@ interface KitInfo {
 interface ClickersPanelProps {
   motoId: Id<"motos">;
   kitId: Id<"suspensionKits">;
+  userId?: Id<"users">;
   initialSettings: SuspensionSettings;
   ranges: SuspensionRanges;
   forkBrand?: string;
@@ -90,6 +92,7 @@ interface ClickersPanelProps {
 export function ClickersPanel({
   motoId,
   kitId,
+  userId,
   initialSettings,
   ranges,
   forkBrand,
@@ -115,7 +118,7 @@ export function ClickersPanel({
   const [isApplyingConfig, setIsApplyingConfig] = useState<Id<"configs"> | null>(null);
   
   // Queries
-  const kitConfigs = useQuery(api.configs.getByKit, { kitId });
+  const kitConfigs = useQuery(api.configs.getByKit, userId ? { kitId, userId } : { kitId });
   
   // Mutations Convex
   const updateKit = useMutation(api.suspensionKits.update);

@@ -142,9 +142,9 @@ export default function ConfigsPage() {
     await updateConfigField({ configId, field, value });
   };
 
-  const handleSaveConfig = async (configId: Id<"configs">) => {
+  const handleSaveConfig = async (config: { _id: Id<"configs"> }) => {
     if (!user?._id) return;
-    await saveConfig({ userId: user._id, configId });
+    await saveConfig({ userId: user._id, configId: config._id });
   };
 
   const handleUnsaveConfig = async (configId: Id<"configs">) => {
@@ -205,9 +205,10 @@ export default function ConfigsPage() {
     riderLevel?: string;
     riderStyle?: string;
     riderObjective?: string;
-  }>(configList: T[] | undefined): T[] => {
+  }>(configList: Array<T | null | undefined> | undefined): T[] => {
     if (!configList) return [];
-    return configList.filter(config => {
+    return configList.filter((config): config is T => {
+      if (!config) return false;
       if (brandFilter && config.motoBrand !== brandFilter) return false;
       if (modelFilter && config.motoModel !== modelFilter) return false;
       if (sportFilter && config.sportType !== sportFilter) return false;
@@ -221,7 +222,7 @@ export default function ConfigsPage() {
 
   // Appliquer les filtres à toutes les listes
   const filteredConfigs = filterConfigs(configs);
-  const filteredSavedConfigs = filterConfigs(savedConfigs?.filter(Boolean) as typeof savedConfigs);
+  const filteredSavedConfigs = filterConfigs(savedConfigs);
   const filteredFollowingConfigs = filterConfigs(followingConfigs);
 
   // Fonction pour obtenir le label de période
@@ -341,7 +342,7 @@ export default function ConfigsPage() {
                         className="data-[state=active]:bg-purple-500 data-[state=active]:text-white gap-2"
                       >
                         <Settings2 className="h-4 w-4" />
-                        MES PARTAGES
+                        MES CONFIGS
                       </TabsTrigger>
                     </TabsList>
 
@@ -524,7 +525,7 @@ export default function ConfigsPage() {
                               isLiked={isConfigLiked(config._id)}
                               isFollowingUser={config.user?._id ? isUserFollowed(config.user._id as Id<"users">) : false}
                               onLike={() => handleToggleLike(config._id)}
-                              onSave={config.userId !== user?._id ? () => handleSaveConfig(config._id) : undefined}
+                              onSave={config.userId !== user?._id ? () => handleSaveConfig(config) : undefined}
                               onUnsave={config.userId !== user?._id ? () => handleUnsaveConfig(config._id) : undefined}
                               onDelete={config.userId === user?._id ? () => handleDelete(config._id) : undefined}
                               onVisibilityChange={config.userId === user?._id ? (v) => handleVisibilityChange(config._id, v) : undefined}
@@ -553,7 +554,7 @@ export default function ConfigsPage() {
                           isLiked={isConfigLiked(config._id)}
                           isFollowingUser={config.user?._id ? isUserFollowed(config.user._id as Id<"users">) : false}
                           onLike={() => handleToggleLike(config._id)}
-                          onSave={() => handleSaveConfig(config._id)}
+                          onSave={() => handleSaveConfig(config)}
                           onUnsave={() => handleUnsaveConfig(config._id)}
                           onToggleFollow={config.user?._id ? () => handleToggleFollow(config.user!._id as Id<"users">) : undefined}
                         />

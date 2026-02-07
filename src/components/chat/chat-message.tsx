@@ -1,10 +1,9 @@
 "use client";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import { MiniGauge } from "@/components/ui/mini-gauge";
 import { cn } from "@/lib/utils";
-import { Bot, User, Save, Check, Plus, Minus, Zap, BookOpen, Target, Settings, CheckCircle, ArrowRight, Gauge, AlertTriangle, ThumbsUp, ThumbsDown, RefreshCw, Download } from "lucide-react";
+import { Bot, User, Plus, Minus, Zap, BookOpen, Target, Settings, CheckCircle, ArrowRight, Gauge, AlertTriangle, ThumbsUp, ThumbsDown, RefreshCw, Download } from "lucide-react";
 import { useState, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 
@@ -49,7 +48,6 @@ interface ChatMessageProps {
   message: Message;
   userImage?: string;
   onButtonClick?: (action: string, buttonText?: string) => void;
-  onSaveConfig?: (config: ConfigType | undefined) => Promise<void>;
   onUpdateConfig?: (configId: string, field: string, value: number) => Promise<void>;
   savedConfigId?: string;
   baseValues?: BaseValues;
@@ -199,12 +197,10 @@ function AdjustableValue({
   );
 }
 
-export function ChatMessage({ message, userImage, onButtonClick, onSaveConfig, onUpdateConfig, savedConfigId, baseValues }: ChatMessageProps) {
+export function ChatMessage({ message, userImage, onButtonClick, onUpdateConfig, savedConfigId, baseValues }: ChatMessageProps) {
   const isUser = message.role === "user";
   const initialConfig = message.metadata?.config;
   const [localConfig, setLocalConfig] = useState<ConfigType | undefined>(initialConfig);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [isAdjusting, setIsAdjusting] = useState(false);
 
   const config = localConfig;
@@ -229,18 +225,6 @@ export function ChatMessage({ message, userImage, onButtonClick, onSaveConfig, o
     
     setIsAdjusting(false);
   }, [localConfig, savedConfigId, onUpdateConfig]);
-
-  const handleSaveConfig = async () => {
-    if (!config || !onSaveConfig) return;
-    setIsSaving(true);
-    try {
-      await onSaveConfig(config);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   // Parse les boutons du contenu - format: [BUTTON:titre|description:action]
   const parseContent = (content: string) => {
@@ -341,99 +325,6 @@ export function ChatMessage({ message, userImage, onButtonClick, onSaveConfig, o
             }
           })}
         </div>
-
-        {/* Boutons stylisés en carte avec icônes intelligentes */}
-        {contentParts.some(part => typeof part !== "string") && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-            {contentParts.map((part, index) => {
-              if (typeof part !== "string") {
-                // Icône dynamique selon l'action
-                const getButtonIcon = (action: string, text: string) => {
-                  const actionLower = action.toLowerCase();
-                  const textLower = text.toLowerCase();
-                  
-                  if (actionLower.includes("direct") || actionLower.includes("rapide") || textLower.includes("direct") || textLower.includes("rapide")) {
-                    return <Zap className="h-5 w-5" />;
-                  }
-                  if (actionLower.includes("pas") || textLower.includes("pas-à-pas") || textLower.includes("méthode") || textLower.includes("complet")) {
-                    return <BookOpen className="h-5 w-5" />;
-                  }
-                  if (actionLower.includes("confirm") || actionLower.includes("valider") || actionLower.includes("oui")) {
-                    return <CheckCircle className="h-5 w-5" />;
-                  }
-                  if (actionLower.includes("tester") || actionLower.includes("test")) {
-                    return <Target className="h-5 w-5" />;
-                  }
-                  if (actionLower.includes("modifier") || actionLower.includes("non")) {
-                    return <RefreshCw className="h-5 w-5" />;
-                  }
-                  if (actionLower.includes("sauvegard") || actionLower.includes("save")) {
-                    return <Download className="h-5 w-5" />;
-                  }
-                  if (actionLower.includes("continuer") || actionLower.includes("next")) {
-                    return <ArrowRight className="h-5 w-5" />;
-                  }
-                  // Par défaut
-                  return <Settings className="h-5 w-5" />;
-                };
-
-                // Couleur dynamique selon l'action
-                const getButtonColor = (action: string, text: string) => {
-                  const actionLower = action.toLowerCase();
-                  const textLower = text.toLowerCase();
-                  
-                  if (actionLower.includes("direct") || actionLower.includes("rapide") || textLower.includes("direct")) {
-                    return "from-orange-500/20 to-orange-600/10 border-orange-500/30 hover:border-orange-500/60 text-orange-400";
-                  }
-                  if (actionLower.includes("pas") || textLower.includes("pas-à-pas") || textLower.includes("complet")) {
-                    return "from-blue-500/20 to-blue-600/10 border-blue-500/30 hover:border-blue-500/60 text-blue-400";
-                  }
-                  if (actionLower.includes("confirm") || actionLower.includes("oui")) {
-                    return "from-green-500/20 to-green-600/10 border-green-500/30 hover:border-green-500/60 text-green-400";
-                  }
-                  // Par défaut purple
-                  return "from-purple-500/20 to-purple-600/10 border-purple-500/30 hover:border-purple-500/60 text-purple-400";
-                };
-
-                const iconColorClass = getButtonColor(part.action, part.text);
-                
-                return (
-                  <button
-                    key={index}
-                    onClick={() => onButtonClick?.(part.action, part.text)}
-                    className={cn(
-                      "group relative p-5 rounded-xl bg-gradient-to-br from-zinc-800/80 to-zinc-900/80 border transition-all duration-300 text-left hover:scale-[1.02] active:scale-[0.98]",
-                      iconColorClass
-                    )}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className={cn(
-                        "h-10 w-10 rounded-lg flex items-center justify-center shrink-0 transition-colors",
-                        iconColorClass.includes("orange") ? "bg-orange-500/20 group-hover:bg-orange-500/30" :
-                        iconColorClass.includes("blue") ? "bg-blue-500/20 group-hover:bg-blue-500/30" :
-                        iconColorClass.includes("green") ? "bg-green-500/20 group-hover:bg-green-500/30" :
-                        "bg-purple-500/20 group-hover:bg-purple-500/30"
-                      )}>
-                        {getButtonIcon(part.action, part.text)}
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-white text-sm uppercase tracking-wide mb-1">
-                          {part.text}
-                        </h4>
-                        {part.description && (
-                          <p className="text-xs text-zinc-400 font-normal normal-case">
-                            {part.description}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </button>
-                );
-              }
-              return null;
-            })}
-          </div>
-        )}
 
         {/* Afficher la config suggérée si présente */}
         {config && (
@@ -613,31 +504,97 @@ export function ChatMessage({ message, userImage, onButtonClick, onSaveConfig, o
               <p className="text-xs text-zinc-500 italic pt-2 border-t border-zinc-800">
                 Les réglages de clics sont toujours indiqués &quot;depuis fermé&quot;.
               </p>
-
-              {onSaveConfig && (
-                <Button
-                  onClick={handleSaveConfig}
-                  disabled={isSaving || saved}
-                  className={`w-full gap-2 ${
-                    saved 
-                      ? "bg-emerald-500 hover:bg-emerald-500" 
-                      : "bg-purple-500 hover:bg-purple-600"
-                  }`}
-                >
-                  {saved ? (
-                    <>
-                      <Check className="h-4 w-4" />
-                      CONFIG SAUVEGARDÉE
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4" />
-                      {isSaving ? "SAUVEGARDE..." : "SAUVEGARDER CETTE CONFIG"}
-                    </>
-                  )}
-                </Button>
-              )}
             </div>
+          </div>
+        )}
+
+        {/* Boutons stylisés en carte avec icônes intelligentes */}
+        {contentParts.some(part => typeof part !== "string") && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            {contentParts.map((part, index) => {
+              if (typeof part !== "string") {
+                // Icône dynamique selon l'action
+                const getButtonIcon = (action: string, text: string) => {
+                  const actionLower = action.toLowerCase();
+                  const textLower = text.toLowerCase();
+                  
+                  if (actionLower.includes("direct") || actionLower.includes("rapide") || textLower.includes("direct") || textLower.includes("rapide")) {
+                    return <Zap className="h-5 w-5" />;
+                  }
+                  if (actionLower.includes("pas") || textLower.includes("pas-à-pas") || textLower.includes("méthode") || textLower.includes("complet")) {
+                    return <BookOpen className="h-5 w-5" />;
+                  }
+                  if (actionLower.includes("confirm") || actionLower.includes("valider") || actionLower.includes("oui")) {
+                    return <CheckCircle className="h-5 w-5" />;
+                  }
+                  if (actionLower.includes("tester") || actionLower.includes("test")) {
+                    return <Target className="h-5 w-5" />;
+                  }
+                  if (actionLower.includes("modifier") || actionLower.includes("non")) {
+                    return <RefreshCw className="h-5 w-5" />;
+                  }
+                  if (actionLower.includes("sauvegard") || actionLower.includes("save")) {
+                    return <Download className="h-5 w-5" />;
+                  }
+                  if (actionLower.includes("continuer") || actionLower.includes("next")) {
+                    return <ArrowRight className="h-5 w-5" />;
+                  }
+                  return <Settings className="h-5 w-5" />;
+                };
+
+                const getButtonColor = (action: string, text: string) => {
+                  const actionLower = action.toLowerCase();
+                  const textLower = text.toLowerCase();
+                  
+                  if (actionLower.includes("direct") || actionLower.includes("rapide") || textLower.includes("direct")) {
+                    return "from-orange-500/20 to-orange-600/10 border-orange-500/30 hover:border-orange-500/60 text-orange-400";
+                  }
+                  if (actionLower.includes("pas") || textLower.includes("pas-à-pas") || textLower.includes("complet")) {
+                    return "from-blue-500/20 to-blue-600/10 border-blue-500/30 hover:border-blue-500/60 text-blue-400";
+                  }
+                  if (actionLower.includes("confirm") || actionLower.includes("oui")) {
+                    return "from-green-500/20 to-green-600/10 border-green-500/30 hover:border-green-500/60 text-green-400";
+                  }
+                  return "from-purple-500/20 to-purple-600/10 border-purple-500/30 hover:border-purple-500/60 text-purple-400";
+                };
+
+                const iconColorClass = getButtonColor(part.action, part.text);
+                
+                return (
+                  <button
+                    key={index}
+                    onClick={() => onButtonClick?.(part.action, part.text)}
+                    className={cn(
+                      "group relative p-5 rounded-xl bg-gradient-to-br from-zinc-800/80 to-zinc-900/80 border transition-all duration-300 text-left hover:scale-[1.02] active:scale-[0.98]",
+                      iconColorClass
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={cn(
+                        "h-10 w-10 rounded-lg flex items-center justify-center shrink-0 transition-colors",
+                        iconColorClass.includes("orange") ? "bg-orange-500/20 group-hover:bg-orange-500/30" :
+                        iconColorClass.includes("blue") ? "bg-blue-500/20 group-hover:bg-blue-500/30" :
+                        iconColorClass.includes("green") ? "bg-green-500/20 group-hover:bg-green-500/30" :
+                        "bg-purple-500/20 group-hover:bg-purple-500/30"
+                      )}>
+                        {getButtonIcon(part.action, part.text)}
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-white text-sm uppercase tracking-wide mb-1">
+                          {part.text}
+                        </h4>
+                        {part.description && (
+                          <p className="text-xs text-zinc-400 font-normal normal-case">
+                            {part.description}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                );
+              }
+              return null;
+            })}
           </div>
         )}
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { useId } from "react";
+
 interface MiniGaugeProps {
   percentage: number;
   size?: "xs" | "sm" | "md";
@@ -37,7 +39,7 @@ export function MiniGauge({
   const progressLength = (clampedPercentage / 100) * arcLength;
   
   // Generate unique gradient ID to avoid conflicts
-  const gradientId = `gauge-gradient-${Math.random().toString(36).substr(2, 9)}`;
+  const gradientId = useId();
 
   return (
     <div className={`relative ${className}`} style={{ width: config.width, height: config.height }}>

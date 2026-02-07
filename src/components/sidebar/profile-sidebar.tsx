@@ -190,11 +190,11 @@ export function ProfileSidebar({ onSendMessage }: ProfileSidebarProps) {
   };
 
   return (
-    <div className="relative flex h-full shrink-0">
-      {/* Collapse toggle button - fixed position, always visible */}
+    <div className="relative h-full shrink-0">
+      {/* Collapse toggle button - visually docked to sidebar without affecting main layout width */}
       <button
         onClick={toggleRightSidebar}
-        className="sticky top-4 self-start z-20 flex items-center justify-center w-5 h-10 bg-zinc-800 hover:bg-zinc-700 border-y border-l border-zinc-700 rounded-l-md transition-colors -mr-px"
+        className="absolute left-0 top-4 z-20 flex h-10 w-5 -translate-x-full items-center justify-center rounded-l-md border-y border-l border-zinc-700 bg-zinc-800 transition-colors hover:bg-zinc-700"
         title={isCollapsed ? "Ouvrir le panneau" : "Fermer le panneau"}
       >
         {isCollapsed ? (

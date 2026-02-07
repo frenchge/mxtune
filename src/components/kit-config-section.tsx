@@ -3,6 +3,7 @@
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
+import { useCurrentUser } from "@/hooks/use-current-user";
 import { 
   Sliders, 
   Clock, 
@@ -62,7 +63,11 @@ export function KitConfigSection({
   currentSettings,
   isOwner 
 }: KitConfigSectionProps) {
-  const configs = useQuery(api.configs.getByKit, { kitId });
+  const { user } = useCurrentUser();
+  const configs = useQuery(
+    api.configs.getByKit,
+    user?._id ? { kitId, userId: user._id } : { kitId }
+  );
 
   const hasCurrentSettings = 
     currentSettings.forkCompression !== undefined ||

@@ -13,7 +13,10 @@ function generateShareLink() {
 
 // Obtenir les configs d'un kit de suspension (avec auto-repair des orphelines)
 export const getByKit = query({
-  args: { kitId: v.id("suspensionKits") },
+  args: {
+    kitId: v.id("suspensionKits"),
+    userId: v.optional(v.id("users")),
+  },
   handler: async (ctx, args) => {
     // Récupérer les configs directement liées au kit
     const configs = await ctx.db
@@ -42,9 +45,13 @@ export const getByKit = query({
       ...configs,
       ...orphanConfigs.filter(c => !existingIds.has(c._id))
     ];
+
+    const filteredByOwner = args.userId
+      ? allConfigs.filter((config) => config.userId === args.userId)
+      : allConfigs;
     
     // Trier par date (plus récent en premier)
-    return allConfigs.sort((a, b) => b.createdAt - a.createdAt);
+    return filteredByOwner.sort((a, b) => b.createdAt - a.createdAt);
   },
 });
 
@@ -241,6 +248,7 @@ export const getById = query({
 // Créer une config
 export const create = mutation({
   args: {
+    userId: v.optional(v.id("users")),
     motoId: v.id("motos"),
     suspensionKitId: v.optional(v.id("suspensionKits")),
     conversationId: v.optional(v.id("conversations")),
@@ -272,13 +280,24 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Non authentifié");
+    let user = null;
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .first();
-    if (!user) throw new Error("Utilisateur non trouvé");
+    if (identity) {
+      user = await ctx.db
+        .query("users")
+        .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+        .first();
+    } else if (args.userId) {
+      user = await ctx.db.get(args.userId);
+      if (user && args.conversationId) {
+        const conversation = await ctx.db.get(args.conversationId);
+        if (!conversation || conversation.userId !== user._id) {
+          throw new Error("Conversation invalide pour cet utilisateur");
+        }
+      }
+    }
+
+    if (!user) throw new Error("Non authentifié");
 
     const visibility = args.visibility || "private";
     const shareLink = (visibility === "link" || visibility === "public") ? generateShareLink() : undefined;

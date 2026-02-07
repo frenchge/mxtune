@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { Id } from "../../convex/_generated/dataModel";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/ui/brand-logo";
@@ -30,12 +33,11 @@ import {
   Trash2,
   Plus,
   Minus,
-  TestTube2,
-  CheckCircle2,
   FlaskConical,
 } from "lucide-react";
 import { clicksToPercentage, getPercentageColor, getPositionDescription } from "@/lib/clicker-utils";
 import { Badge } from "@/components/ui/badge";
+import { Slider } from "@/components/ui/slider";
 
 const SPORT_TYPES = [
   { value: "enduro", label: "Enduro" },
@@ -70,6 +72,8 @@ const OBJECTIVES = [
   { value: "performance", label: "Performance" },
   { value: "mixte", label: "Mixte" },
 ];
+const RECENT_CONFIG_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
+const RENDER_TIMESTAMP_MS = Date.now();
 
 export interface ConfigCardConfig {
   _id: string;
@@ -271,6 +275,66 @@ export function ConfigCard({
   onUpdateField,
 }: ConfigCardProps) {
   const visibility = config.visibility || (config.isPublic ? "public" : "private");
+  const feedbacks = useQuery(api.configFeedbacks.getByConfigPublic, {
+    configId: config._id as Id<"configs">,
+  });
+  const submitFeedback = useMutation(api.configFeedbacks.submit);
+  const [showAllFeedbacks, setShowAllFeedbacks] = useState(false);
+  const [showFeedbackForm, setShowFeedbackForm] = useState(false);
+  const [feedbackScore, setFeedbackScore] = useState(8);
+  const [feedbackNote, setFeedbackNote] = useState("");
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const feedbackCount = feedbacks?.length || 0;
+  const avgSatisfaction =
+    feedbackCount > 0
+      ? (feedbacks || []).reduce((sum, fb) => sum + fb.satisfaction, 0) / feedbackCount
+      : 0;
+  const satisfactionPercent = feedbackCount > 0 ? Math.round(avgSatisfaction * 10) : 0;
+  const allFeedbacks = feedbacks || [];
+  const displayedFeedbacks = showAllFeedbacks ? allFeedbacks : allFeedbacks.slice(0, 5);
+  const satisfactionTone =
+    avgSatisfaction >= 8
+      ? {
+          badge: "border-emerald-500/35 text-emerald-300 bg-emerald-500/10",
+          text: "text-emerald-300",
+        }
+      : avgSatisfaction >= 6
+        ? {
+            badge: "border-amber-500/35 text-amber-300 bg-amber-500/10",
+            text: "text-amber-300",
+          }
+        : {
+            badge: "border-rose-500/35 text-rose-300 bg-rose-500/10",
+            text: "text-rose-300",
+          };
+  const hasUserFeedback = Boolean(
+    currentUserId &&
+      (feedbacks || []).some((fb) => String(fb.user?._id || "") === String(currentUserId))
+  );
+  const canLeaveFeedback = Boolean(currentUserId && !isOwner && (config.visibility === "public" || config.isPublic) && !hasUserFeedback);
+
+  const handleSubmitFeedback = async () => {
+    if (!currentUserId) return;
+    setIsSubmittingFeedback(true);
+    setFeedbackError(null);
+    try {
+      await submitFeedback({
+        userId: currentUserId as Id<"users">,
+        configId: config._id as Id<"configs">,
+        satisfaction: feedbackScore,
+        note: feedbackNote.trim() || undefined,
+      });
+      setShowFeedbackForm(false);
+      setFeedbackNote("");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Impossible d'envoyer l'avis.";
+      setFeedbackError(message);
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  };
 
   const getVisibilityIcon = () => {
     switch (visibility) {
@@ -484,7 +548,7 @@ export function ConfigCard({
                   <p className="text-xs text-zinc-500">
                     {new Date(config.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}
                   </p>
-                  {Date.now() - config.createdAt < 7 * 24 * 60 * 60 * 1000 && (
+                  {RENDER_TIMESTAMP_MS - config.createdAt < RECENT_CONFIG_THRESHOLD_MS && feedbackCount === 0 && (
                     <Badge variant="outline" className="border-amber-500/30 text-amber-400 gap-1 text-[9px] py-0 px-1.5">
                       <FlaskConical className="h-2.5 w-2.5" />
                       À tester
@@ -897,27 +961,108 @@ export function ConfigCard({
           </div>
         )}
 
-        {/* Social Proof Badges - Indicateurs de confiance */}
-        {!isOwner && ((config.likes && config.likes >= 1) || (config.saves && config.saves >= 1) || (config.validatedSessions && config.validatedSessions >= 1)) && (
+        {/* Feedback communauté visible sur les configs publiques */}
+        {(feedbackCount > 0 || canLeaveFeedback || hasUserFeedback) && (
           <div className="px-5 pb-4">
-            <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-zinc-800/50">
-              {config.saves && config.saves >= 1 && (
-                <Badge variant="outline" className="border-purple-500/30 text-purple-400 gap-1 text-[10px]">
-                  <Users className="h-3 w-3" />
-                  {config.saves} {config.saves === 1 ? "pilote" : "pilotes"}
-                </Badge>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 space-y-2">
+              <div className="space-y-1">
+                <p className="text-[11px] uppercase tracking-wide text-zinc-400 font-semibold">
+                  Feedback pilotes ({feedbackCount})
+                </p>
+                {feedbackCount > 0 && (
+                  <div className="flex items-center gap-3 text-xs text-zinc-400">
+                    <span>{feedbackCount} {feedbackCount > 1 ? "riders" : "rider"}</span>
+                    <span className={satisfactionTone.text}>Taux de satisfaction global: {satisfactionPercent}%</span>
+                  </div>
+                )}
+              </div>
+              {displayedFeedbacks.map((fb) => (
+                  <div key={fb._id} className="text-xs text-zinc-300">
+                    <span className="text-zinc-500">
+                      @{fb.user?.username || fb.user?.name || "pilote"}
+                    </span>
+                    <span className="mx-1 text-zinc-600">•</span>
+                    <span className="text-zinc-200 font-medium">{fb.satisfaction}/10</span>
+                    {fb.note ? (
+                      <>
+                        <span className="mx-1 text-zinc-600">•</span>
+                        <span>{fb.note}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="mx-1 text-zinc-600">•</span>
+                        <span className="text-zinc-500 italic">Aucun commentaire</span>
+                      </>
+                    )}
+                  </div>
+                ))}
+              {allFeedbacks.length > 5 && !showAllFeedbacks && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs text-purple-300 hover:text-purple-200 hover:bg-purple-500/10"
+                  onClick={() => setShowAllFeedbacks(true)}
+                >
+                  Voir plus
+                </Button>
               )}
-              {config.likes && config.likes >= 3 && (
-                <Badge variant="outline" className="border-pink-500/30 text-pink-400 gap-1 text-[10px]">
-                  <Heart className="h-3 w-3 fill-current" />
-                  {config.likes} ♥
-                </Badge>
+              {canLeaveFeedback && !showFeedbackForm && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 border-zinc-700 text-zinc-200 hover:text-white hover:bg-zinc-800"
+                  onClick={() => setShowFeedbackForm(true)}
+                >
+                  Ajoutez un avis
+                </Button>
               )}
-              {config.validatedSessions && config.validatedSessions >= 1 && (
-                <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 gap-1 text-[10px]">
-                  <CheckCircle2 className="h-3 w-3" />
-                  Validée {config.validatedSessions}x
-                </Badge>
+              {hasUserFeedback && (
+                <p className="text-xs text-zinc-500">Vous avez déjà laissé un avis.</p>
+              )}
+              {showFeedbackForm && (
+                <div className="mt-2 space-y-3 rounded-md border border-zinc-700 bg-zinc-900/60 p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-zinc-300">Note</p>
+                    <p className="text-xs text-zinc-400">{feedbackScore}/10</p>
+                  </div>
+                  <Slider
+                    value={[feedbackScore]}
+                    onValueChange={(value) => setFeedbackScore(value[0] ?? 8)}
+                    min={1}
+                    max={10}
+                    step={1}
+                  />
+                  <textarea
+                    value={feedbackNote}
+                    onChange={(e) => setFeedbackNote(e.target.value)}
+                    placeholder="Commentaire (optionnel)"
+                    className="w-full min-h-16 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                  />
+                  {feedbackError && (
+                    <p className="text-xs text-red-400">{feedbackError}</p>
+                  )}
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 text-zinc-400 hover:text-zinc-200"
+                      onClick={() => {
+                        setShowFeedbackForm(false);
+                        setFeedbackError(null);
+                      }}
+                    >
+                      Annuler
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="h-8 bg-purple-600 hover:bg-purple-500"
+                      onClick={handleSubmitFeedback}
+                      disabled={isSubmittingFeedback}
+                    >
+                      {isSubmittingFeedback ? "Envoi..." : "Publier l'avis"}
+                    </Button>
+                  </div>
+                </div>
               )}
             </div>
           </div>

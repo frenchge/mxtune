@@ -2,7 +2,6 @@
 
 import { cn } from "@/lib/utils";
 import { Check, Circle } from "lucide-react";
-import { useEffect, useState } from "react";
 
 interface Step {
   id: string;
@@ -26,14 +25,6 @@ const steps: Step[] = [
 
 export function ChatStepsEnhanced({ currentStep, completedSteps = [], className }: ChatStepsEnhancedProps) {
   const currentIndex = steps.findIndex((s) => s.id === currentStep);
-  const [animatingStep, setAnimatingStep] = useState<string | null>(null);
-
-  // Animation quand une étape change
-  useEffect(() => {
-    setAnimatingStep(currentStep);
-    const timer = setTimeout(() => setAnimatingStep(null), 600);
-    return () => clearTimeout(timer);
-  }, [currentStep]);
 
   return (
     <div className={cn("w-full", className)}>
@@ -57,7 +48,7 @@ export function ChatStepsEnhanced({ currentStep, completedSteps = [], className 
                 const isCompleted = index < currentIndex || completedSteps.includes(step.id);
                 const isCurrent = index === currentIndex;
                 const isPending = index > currentIndex && !completedSteps.includes(step.id);
-                const isAnimating = animatingStep === step.id;
+                const isAnimating = currentStep === step.id;
 
                 return (
                   <div key={step.id} className="flex flex-col items-center" style={{ width: '25%' }}>

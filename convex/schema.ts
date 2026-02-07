@@ -183,6 +183,19 @@ export default defineSchema({
     .index("by_config", ["configId"])
     .index("by_user_config", ["userId", "configId"]),
 
+  // Feedback de test des configs
+  configFeedbacks: defineTable({
+    configId: v.id("configs"),
+    userId: v.id("users"), // utilisateur qui a teste la config
+    satisfaction: v.number(), // 1-10
+    note: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_config", ["configId"])
+    .index("by_user", ["userId"])
+    .index("by_user_config", ["userId", "configId"]),
+
   // Système de followers
   follows: defineTable({
     followerId: v.id("users"), // L'user qui suit

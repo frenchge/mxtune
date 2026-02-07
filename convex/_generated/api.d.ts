@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as configFeedbacks from "../configFeedbacks.js";
 import type * as configLikes from "../configLikes.js";
 import type * as configs from "../configs.js";
 import type * as conversations from "../conversations.js";
@@ -26,6 +27,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  configFeedbacks: typeof configFeedbacks;
   configLikes: typeof configLikes;
   configs: typeof configs;
   conversations: typeof conversations;

@@ -13,24 +13,16 @@ const SidebarStateContext = createContext<SidebarStateContextType | undefined>(u
 const STORAGE_KEY = "mxtune-right-sidebar-collapsed";
 
 export function SidebarStateProvider({ children }: { children: ReactNode }) {
-  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(false);
-  const [isHydrated, setIsHydrated] = useState(false);
-
-  // Load from localStorage on mount
-  useEffect(() => {
+  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored !== null) {
-      setIsRightSidebarCollapsed(stored === "true");
-    }
-    setIsHydrated(true);
-  }, []);
+    return stored === null ? false : stored === "true";
+  });
 
   // Save to localStorage when changed
   useEffect(() => {
-    if (isHydrated) {
-      localStorage.setItem(STORAGE_KEY, String(isRightSidebarCollapsed));
-    }
-  }, [isRightSidebarCollapsed, isHydrated]);
+    localStorage.setItem(STORAGE_KEY, String(isRightSidebarCollapsed));
+  }, [isRightSidebarCollapsed]);
 
   const setRightSidebarCollapsed = (collapsed: boolean) => {
     setIsRightSidebarCollapsed(collapsed);

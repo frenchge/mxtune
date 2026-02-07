@@ -57,9 +57,13 @@ export default function UserProfilePage() {
   const { user: currentUser } = useCurrentUser();
 
   const user = useQuery(api.users.getByUsername, { username });
-  const configs = useQuery(
+  const publicConfigs = useQuery(
     api.users.getPublicConfigs,
     user?._id ? { userId: user._id } : "skip"
+  );
+  const ownConfigs = useQuery(
+    api.configs.getByUser,
+    currentUser?._id ? { userId: currentUser._id } : "skip"
   );
   const publicMotos = useQuery(
     api.motos.getPublicByUser,
@@ -98,6 +102,8 @@ export default function UserProfilePage() {
   );
 
   const toggleFollow = useMutation(api.follows.toggleFollow);
+  const updateConfig = useMutation(api.configs.update);
+  const [copiedLink, setCopiedLink] = useState<string | null>(null);
 
   const handleToggleFollow = async () => {
     if (!currentUser?._id || !user?._id) return;
@@ -106,6 +112,19 @@ export default function UserProfilePage() {
       followingId: user._id as Id<"users"> 
     });
   };
+
+  const handleVisibilityChange = async (configId: Id<"configs">, visibility: string) => {
+    await updateConfig({ configId, visibility });
+  };
+
+  const copyShareLink = (shareLink: string) => {
+    const fullUrl = `${window.location.origin}/config/${shareLink}`;
+    navigator.clipboard.writeText(fullUrl);
+    setCopiedLink(shareLink);
+    setTimeout(() => setCopiedLink(null), 2000);
+  };
+
+  const displayConfigs = isOwnProfile ? ownConfigs : publicConfigs;
 
   if (user === undefined) {
     return (
@@ -146,7 +165,7 @@ export default function UserProfilePage() {
               <div className="flex-1 overflow-auto">
                 <ProfileContent 
                   user={user} 
-                  configs={configs} 
+                  configs={displayConfigs} 
                   publicMotos={publicMotos}
                   savedConfigs={savedConfigs?.filter((c): c is NonNullable<typeof c> => c !== null)}
                   followStats={followStats} 
@@ -154,6 +173,9 @@ export default function UserProfilePage() {
                   amIFollowing={amIFollowing}
                   isOwnProfile={!!isOwnProfile}
                   onToggleFollow={handleToggleFollow}
+                  onVisibilityChange={handleVisibilityChange}
+                  onCopyLink={copyShareLink}
+                  copiedLink={copiedLink}
                   showHeader={false} 
                 />
               </div>
@@ -167,7 +189,7 @@ export default function UserProfilePage() {
       <SignedOut>
         <ProfileContent 
           user={user} 
-          configs={configs} 
+          configs={displayConfigs} 
           publicMotos={publicMotos}
           savedConfigs={undefined}
           followStats={followStats} 
@@ -278,6 +300,9 @@ interface ProfileContentProps {
   amIFollowing?: boolean;
   isOwnProfile: boolean;
   onToggleFollow?: () => void;
+  onVisibilityChange?: (configId: Id<"configs">, visibility: string) => void;
+  onCopyLink?: (shareLink: string) => void;
+  copiedLink?: string | null;
   showHeader: boolean;
 }
 
@@ -291,6 +316,9 @@ export function ProfileContent({
   amIFollowing,
   isOwnProfile,
   onToggleFollow,
+  onVisibilityChange,
+  onCopyLink,
+  copiedLink,
   onToggleMotoVisibility,
   showHeader 
 }: ProfileContentProps) {
@@ -459,7 +487,7 @@ export function ProfileContent({
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
                 <Settings2 className="h-5 w-5 text-purple-400" />
-                CONFIGS PUBLIQUES
+                {isOwnProfile ? "MES CONFIGS" : "CONFIGS PUBLIQUES"}
               </h2>
               <span className="text-sm text-zinc-500">
                 {configs?.length || 0} config{(configs?.length || 0) > 1 ? "s" : ""}
@@ -481,10 +509,16 @@ export function ProfileContent({
                   <ConfigCard 
                     key={config._id} 
                     config={config}
+                    currentUserId={user._id}
+                    isOwner={isOwnProfile}
                     showUser={false}
                     showFollowButton={false}
                     showLikeButton={true}
                     showSaveButton={false}
+                    showVisibilityControls={isOwnProfile}
+                    onVisibilityChange={isOwnProfile && onVisibilityChange ? (visibility) => onVisibilityChange(config._id as Id<"configs">, visibility) : undefined}
+                    onCopyLink={onCopyLink}
+                    copiedLink={copiedLink}
                   />
                 ))}
               </div>
