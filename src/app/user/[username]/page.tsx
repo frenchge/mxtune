@@ -371,7 +371,7 @@ export function ProfileContent({
           <div className="flex-1 text-center md:text-left">
             <div className="flex items-center justify-center md:justify-start gap-2">
               <h1 className="text-3xl font-bold text-white">
-                @{user.username || user.name}
+                {user.username || user.name}
               </h1>
               {isFollowingMe && (
                 <span className="text-xs font-medium text-zinc-500 bg-zinc-800 px-2 py-1 rounded-full">
