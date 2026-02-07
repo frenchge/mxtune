@@ -148,7 +148,7 @@ export function AppSidebar() {
       <SidebarHeader className="p-5">
         <div className="flex items-center justify-center">
           <Image
-            src="/logo.png"
+            src="/MXTune.png"
             alt="MXTune Logo"
             width={100}
             height={100}
