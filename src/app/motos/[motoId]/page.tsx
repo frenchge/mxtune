@@ -472,8 +472,8 @@ export default function MotoDetailPage() {
                     <Badge className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px]">ACTIF</Badge>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
-                    <div className="space-y-2">
+                  <div className="flex flex-col md:flex-row md:items-start gap-2 mt-4">
+                    <div className="space-y-2 md:w-60">
                       <p className="text-[11px] text-zinc-400">Kit</p>
                       <Select
                         value={selectedKit?._id ?? ""}
@@ -482,7 +482,7 @@ export default function MotoDetailPage() {
                           setSelectedConfigId(null);
                         }}
                       >
-                        <SelectTrigger className="bg-zinc-900 border-zinc-700 text-white">
+                        <SelectTrigger className="bg-zinc-900 border-zinc-700 text-white w-full">
                           <SelectValue placeholder="Sélectionner un kit" />
                         </SelectTrigger>
                         <SelectContent className="bg-zinc-900 border-zinc-800">
@@ -495,7 +495,7 @@ export default function MotoDetailPage() {
                       </Select>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-2 md:w-60">
                       <p className="text-[11px] text-zinc-400">Config</p>
                       <Select
                         value={selectedConfigId ?? "__active__"}
@@ -508,7 +508,7 @@ export default function MotoDetailPage() {
                           void handleApplySavedConfig(value as Id<"configs">);
                         }}
                       >
-                        <SelectTrigger className="bg-zinc-900 border-zinc-700 text-white">
+                        <SelectTrigger className="bg-zinc-900 border-zinc-700 text-white w-full">
                           <SelectValue placeholder="Config active" />
                         </SelectTrigger>
                         <SelectContent className="bg-zinc-900 border-zinc-800">
@@ -564,7 +564,7 @@ export default function MotoDetailPage() {
                           const isActive = kit.isDefault;
                           return (
                             <div key={kit._id} className={`p-4 rounded-xl border transition-colors ${isActive ? "border-purple-500/40 bg-purple-500/10" : "border-zinc-800/80 bg-zinc-900/20 opacity-80 hover:opacity-100 hover:border-zinc-700"}`}>
-                              <div className="flex items-start justify-between gap-4">
+                              <div className="flex items-center justify-between gap-4">
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-2">
                                     {isActive && <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />}
@@ -587,7 +587,7 @@ export default function MotoDetailPage() {
                                     {kitConfigs?.length || 0} configs
                                   </div>
                                 </div>
-                                <div className="flex flex-col gap-2">
+                                <div className="flex flex-col items-end justify-center gap-2">
                                   {!isActive && (
                                     <Button size="sm" onClick={() => handleSetActiveKit(kit._id)} className="bg-emerald-600 hover:bg-emerald-500">
                                       <Check className="h-3 w-3 mr-1" /> Activer ce kit

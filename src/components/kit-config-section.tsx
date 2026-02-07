@@ -115,7 +115,6 @@ export function KitConfigSection({
       {configs && configs.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <Settings2 className="h-3 w-3 text-zinc-500" />
             <span className="text-xs text-zinc-500">Configs sauvegardées ({configs.length})</span>
           </div>
           <div className="space-y-1.5 max-h-32 overflow-y-auto">

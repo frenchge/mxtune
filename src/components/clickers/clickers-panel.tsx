@@ -22,12 +22,11 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { 
-  Sliders, 
-  Bookmark, 
+import {
+  Sliders,
+  Bookmark,
   Plus,
   Check,
-  Settings2,
   Info,
   Loader2,
   Clock,
@@ -244,10 +243,7 @@ export function ClickersPanel({
         <div className="flex items-center gap-4">
           {motoBrand && <BrandLogo brand={motoBrand} size="lg" />}
           <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <Settings2 className="h-5 w-5 text-purple-500" />
-              {kitName}
-            </h2>
+            <h2 className="text-lg font-bold text-white">{kitName}</h2>
             <p className="text-sm text-zinc-500">
               {motoBrand} {motoModel}
               {isDefault && (
@@ -290,8 +286,7 @@ export function ClickersPanel({
           <div className="space-y-4">
             {/* Header */}
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                <Bookmark className="h-5 w-5 text-purple-400" />
+              <h3 className="text-lg font-semibold text-white">
                 Configs sauvegardées
               </h3>
               <span className="text-sm text-zinc-500">

@@ -238,11 +238,11 @@ export default function MotosPage() {
                                 <Star className="h-3 w-3 text-amber-400 fill-amber-400" />
                                 <span className="text-xs text-zinc-300 font-medium truncate">Kit actif: {activeKit.name}</span>
                               </div>
-                              <p className="text-[11px] text-zinc-500">
-                                {activeKit.terrainType || activeKit.sportType
-                                  ? [activeKit.sportType, activeKit.terrainType].filter(Boolean).join(" · ")
-                                  : "Kit actif"}
-                              </p>
+                              {(activeKit.terrainType || activeKit.sportType) && (
+                                <p className="text-[11px] text-zinc-500">
+                                  {[activeKit.sportType, activeKit.terrainType].filter(Boolean).join(" · ")}
+                                </p>
+                              )}
                             </div>
                           )}
                           </div>

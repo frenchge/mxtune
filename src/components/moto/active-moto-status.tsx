@@ -144,7 +144,6 @@ export function ActiveMotoStatus({
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Settings2 className="h-4 w-4 text-zinc-500" />
             <span className="text-xs text-zinc-500 uppercase tracking-wider">Kit monté</span>
           </div>
           {kit ? (
