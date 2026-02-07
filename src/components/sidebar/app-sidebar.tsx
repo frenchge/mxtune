@@ -292,10 +292,10 @@ export function AppSidebar() {
           />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate">
-              {user?.name || "Utilisateur"}
+              {user?.username ? `@${user.username}` : "@username"}
             </p>
             <p className="text-xs text-zinc-500 truncate">
-              {user?.level || "Configurer le profil"}
+              {user?.name || "Utilisateur"}
             </p>
           </div>
         </div>
