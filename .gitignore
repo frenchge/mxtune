@@ -50,3 +50,11 @@ next-env.d.ts
 
 # Screenshots / images (not part of source)
 *.png
+!public/*.png
+!public/**/*.png
+
+# Clerk
+.clerk/
+
+# Backups
+*.bak

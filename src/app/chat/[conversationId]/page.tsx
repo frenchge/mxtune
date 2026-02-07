@@ -232,6 +232,54 @@ function clampValue(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
+function clampConfigToKit(config: ConfigData, kit: {
+  maxForkCompression?: number;
+  maxForkRebound?: number;
+  maxShockCompressionLow?: number;
+  maxShockCompressionHigh?: number;
+  maxShockRebound?: number;
+}): ConfigData {
+  const updated = { ...config };
+  if (typeof updated.forkCompression === "number") {
+    updated.forkCompression = clampValue(
+      updated.forkCompression,
+      0,
+      kit.maxForkCompression ?? 25
+    );
+  }
+  if (typeof updated.forkRebound === "number") {
+    updated.forkRebound = clampValue(
+      updated.forkRebound,
+      0,
+      kit.maxForkRebound ?? 25
+    );
+  }
+  if (typeof updated.shockCompressionLow === "number") {
+    updated.shockCompressionLow = clampValue(
+      updated.shockCompressionLow,
+      0,
+      kit.maxShockCompressionLow ?? 25
+    );
+  }
+  if (typeof updated.shockCompressionHigh === "number") {
+    updated.shockCompressionHigh = Number(
+      clampValue(
+        updated.shockCompressionHigh,
+        0,
+        kit.maxShockCompressionHigh ?? 4
+      ).toFixed(1)
+    );
+  }
+  if (typeof updated.shockRebound === "number") {
+    updated.shockRebound = clampValue(
+      updated.shockRebound,
+      0,
+      kit.maxShockRebound ?? 25
+    );
+  }
+  return updated;
+}
+
 function buildDeterministicConfig(
   intake: IntakeData,
   selectedKit: {
@@ -514,6 +562,44 @@ function buildProtocolMetadata(params: {
   };
 }
 
+function appendSagCtasIfNeeded(content: string) {
+  const normalized = normalizeText(content);
+  const asksSag =
+    normalized.includes("sag") &&
+    (normalized.includes("mesure") ||
+      normalized.includes("mesurer") ||
+      normalized.includes("peux tu mesurer") ||
+      normalized.includes("as-tu") ||
+      normalized.includes("as tu"));
+
+  if (!asksSag) return content;
+
+  const ctas = [
+    "[BUTTON:J'ai la mesure du SAG|Je peux te donner les valeurs:sag_has_measure]",
+    "[BUTTON:Je ne peux pas mesurer maintenant|Utilise une valeur moyenne:sag_use_average]",
+  ].join("\n");
+
+  return [content, "", ctas].join("\n");
+}
+
+function formatAiMessage(content: string) {
+  const lines = content.split("\n");
+  const cleanedLines = lines.filter((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return true;
+    if (trimmed.startsWith("|") && trimmed.includes("|")) return false;
+    if (trimmed.startsWith("|---") || trimmed.startsWith("---|")) return false;
+    return true;
+  });
+
+  return cleanedLines
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/^•\s*/gm, "- ")
+    .trim();
+}
+
 export default function ChatPage() {
   const params = useParams();
   const conversationId = params.conversationId as Id<"conversations">;
@@ -549,6 +635,104 @@ export default function ChatPage() {
   const updateStep = useMutation(api.conversations.updateStep);
   const createConfig = useMutation(api.configs.create);
   const updateConfigField = useMutation(api.configs.updateField);
+
+  const buildMotoContext = (
+    moto: typeof selectedMoto,
+    kit: typeof selectedKit,
+    currentConfig?: ConfigData
+  ) => {
+    const lines: string[] = [];
+    if (moto) {
+      lines.push(`Moto: ${moto.brand} ${moto.model} ${moto.year}`);
+    }
+    if (kit) {
+      lines.push(`Kit: ${kit.name}`);
+      if (kit.isStockSuspension !== undefined) {
+        lines.push(`Type: ${kit.isStockSuspension ? "origine" : "aftermarket"}`);
+      }
+      if (kit.forkBrand || kit.forkModel) {
+        lines.push(`Fourche: ${[kit.forkBrand, kit.forkModel].filter(Boolean).join(" ")}`);
+      }
+      if (kit.shockBrand || kit.shockModel) {
+        lines.push(`Amortisseur: ${[kit.shockBrand, kit.shockModel].filter(Boolean).join(" ")}`);
+      }
+      if (kit.forkSpringRate) lines.push(`Ressort fourche: ${kit.forkSpringRate}`);
+      if (kit.shockSpringRate) lines.push(`Ressort amortisseur: ${kit.shockSpringRate}`);
+      if (kit.forkOilWeight || kit.forkOilLevel) {
+        lines.push(
+          `Huile fourche: ${[kit.forkOilWeight, kit.forkOilLevel].filter(Boolean).join(" / ")}`
+        );
+      }
+      if (kit.valvingNotes) lines.push(`Notes valving: ${kit.valvingNotes}`);
+      if (kit.otherMods) lines.push(`Autres mods: ${kit.otherMods}`);
+      if (kit.sportType) lines.push(`Sport: ${kit.sportType}`);
+      if (kit.terrainType) lines.push(`Terrain: ${kit.terrainType}`);
+      if (kit.country) lines.push(`Pays: ${kit.country}`);
+      if (kit.maxForkCompression || kit.maxForkRebound || kit.maxShockCompressionLow || kit.maxShockCompressionHigh || kit.maxShockRebound) {
+        lines.push(
+          `Plages max: fourche C ${kit.maxForkCompression ?? "?"} / R ${kit.maxForkRebound ?? "?"}, amortisseur C BV ${kit.maxShockCompressionLow ?? "?"} / C HV ${kit.maxShockCompressionHigh ?? "?"} / R ${kit.maxShockRebound ?? "?"}`
+        );
+      }
+    }
+    if (currentConfig) {
+      lines.push("Config actuelle:");
+      lines.push(
+        `- Fourche C ${currentConfig.forkCompression ?? "?"} / R ${currentConfig.forkRebound ?? "?"}, Amortisseur C BV ${currentConfig.shockCompressionLow ?? "?"} / C HV ${currentConfig.shockCompressionHigh ?? "?"} / R ${currentConfig.shockRebound ?? "?"}`
+      );
+      if (currentConfig.staticSag || currentConfig.dynamicSag) {
+        lines.push(`- SAG statique ${currentConfig.staticSag ?? "?"} / dynamique ${currentConfig.dynamicSag ?? "?"}`);
+      }
+      if (currentConfig.tirePressureFront || currentConfig.tirePressureRear) {
+        lines.push(
+          `- Pressions pneus AV ${currentConfig.tirePressureFront ?? "?"} / AR ${currentConfig.tirePressureRear ?? "?"}`
+        );
+      }
+    }
+    return lines.join("\n");
+  };
+
+  const requestAiConfig = async (params: {
+    userMessage: string;
+    history: ChatMessageRow[];
+    motoContext: string;
+    userProfile: {
+      weight?: number;
+      level?: string;
+      style?: string;
+      objective?: string;
+    };
+  }) => {
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ role: "user", content: params.userMessage }],
+        conversationHistory: params.history.map((msg) => ({
+          role: msg.role,
+          content: msg.content,
+        })),
+        motoContext: params.motoContext,
+        userProfile: params.userProfile,
+      }),
+    });
+
+    if (!response.ok) {
+      let details = "";
+      try {
+        const err = await response.json();
+        details = err?.details ? ` (${err.details})` : err?.error ? ` (${err.error})` : "";
+      } catch {
+        details = "";
+      }
+      throw new Error(`IA indisponible${details}`);
+    }
+
+    const data = await response.json();
+    return {
+      responseText: (data?.response || "").trim(),
+      config: data?.config as ConfigData | null,
+    };
+  };
 
   // Sélectionner la première moto par défaut si aucune n'est sélectionnée
   useEffect(() => {
@@ -638,8 +822,35 @@ export default function ChatPage() {
       const useExistingConfigLoop = hasExistingConfig && (conversation?.step === "test" || conversation?.step === "proposition");
 
       if (useExistingConfigLoop && isAdjustmentIntent) {
-        const baseConfig = lastConfigMessage?.metadata?.config as ConfigData;
-        const adjustedConfig = applyFeedbackAdjustments(baseConfig, content);
+        const baseConfig = lastConfigMessage?.metadata?.config as ConfigData | undefined;
+        const motoContext = buildMotoContext(selectedMoto, selectedKit, baseConfig);
+        const aiResult = await requestAiConfig({
+          userMessage: content,
+          history: history.slice(0, -1),
+          motoContext,
+          userProfile: {
+            weight: user.weight,
+            level: user.level,
+            style: user.style,
+            objective: user.objective,
+          },
+        });
+
+        if (!aiResult.config) {
+          await createMessage({
+            conversationId,
+            role: "assistant",
+            content:
+              aiResult.responseText ||
+              "Je n'ai pas pu générer d'ajustement. Peux-tu préciser tes symptômes terrain ?",
+          });
+          return;
+        }
+
+        const adjustedConfig = clampConfigToKit(
+          aiResult.config,
+          selectedKit || {}
+        );
         adjustedConfig.name = `${adjustedConfig.name || "Config"} - Ajustement`;
         setPendingGeneratedConfig(adjustedConfig);
 
@@ -648,7 +859,11 @@ export default function ChatPage() {
           conversationId,
           role: "assistant",
           content: [
-            "Ajustement applique sur la config actuelle.",
+            appendSagCtasIfNeeded(
+              formatAiMessage(
+                aiResult.responseText || "Ajustement appliqué sur la config actuelle."
+              )
+            ),
             "",
             "[BUTTON:Sauvegarder la config|Enregistrer cette config dans la base:save_generated_config]",
             "[BUTTON:Continuer le test|Donner un nouveau ressenti:tester_config]",
@@ -803,15 +1018,31 @@ export default function ChatPage() {
         },
       });
 
-      const baseConfig = hasExistingConfig
-        ? (lastConfigMessage?.metadata?.config as ConfigData)
-        : buildDeterministicConfig(intake, kitForConfig);
-      const config = isAdjustmentIntent
-        ? applyFeedbackAdjustments(baseConfig, content)
-        : baseConfig;
-      if (isAdjustmentIntent) {
-        config.name = `${config.name || "Config"} - Ajustement`;
+      const motoContext = buildMotoContext(motoForConfig, kitForConfig);
+      const aiResult = await requestAiConfig({
+        userMessage: content,
+        history: history.slice(0, -1),
+        motoContext,
+        userProfile: {
+          weight: intake.riderWeight ?? user.weight,
+          level: intake.riderLevel ?? user.level,
+          style: intake.riderStyle ?? user.style,
+          objective: intake.riderObjective ?? user.objective,
+        },
+      });
+
+      if (!aiResult.config) {
+        await createMessage({
+          conversationId,
+          role: "assistant",
+          content:
+            aiResult.responseText ||
+            "Je n'ai pas pu générer la config. Peux-tu préciser ton terrain et tes symptômes ?",
+        });
+        return;
       }
+
+      const config = clampConfigToKit(aiResult.config, kitForConfig || {});
       setPendingGeneratedConfig(config);
 
       await updateStep({ conversationId, step: "proposition" });
@@ -820,9 +1051,11 @@ export default function ChatPage() {
         role: "assistant",
         content:
           [
-            isAdjustmentIntent
-              ? "Ajustement appliqué et version enregistrée."
-              : "Config générée et enregistrée.",
+            appendSagCtasIfNeeded(
+              formatAiMessage(
+                aiResult.responseText || "Config générée et enregistrée."
+              )
+            ),
             "",
             "[BUTTON:Sauvegarder la config|Enregistrer cette config dans la base:save_generated_config]",
             "[BUTTON:Generer une autre config|Relancer avec d'autres parametres:restart_config]",
@@ -938,6 +1171,8 @@ export default function ChatPage() {
       modifier: "Je souhaite modifier.",
       tester: "Je vais tester ces réglages.",
       sauvegarder: "Je sauvegarde cette configuration.",
+      sag_has_measure: "J'ai les mesures du SAG. Je peux te donner les valeurs statique et dynamique.",
+      sag_use_average: "Je ne peux pas mesurer maintenant. Utilise des valeurs moyennes pour ce type de kit.",
     };
 
     // Use predefined mapping, or button text as fallback, or the action itself

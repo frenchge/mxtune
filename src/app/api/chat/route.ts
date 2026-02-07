@@ -248,6 +248,14 @@ RAPPEL IMPORTANT
 
 export async function POST(req: NextRequest) {
   try {
+    const rawPat = process.env.CLARIFAI_PAT;
+    const normalizedPat = rawPat ? rawPat.trim().replace(/^['"]|['"]$/g, "") : "";
+    if (!normalizedPat) {
+      return NextResponse.json(
+        { error: "CLARIFAI_PAT manquant" },
+        { status: 500 }
+      );
+    }
     const { messages, conversationHistory, motoContext, userProfile } = await req.json();
 
     // Construire le contexte de conversation
@@ -316,11 +324,11 @@ export async function POST(req: NextRequest) {
 
     // Appel direct à l'API Clarifai via fetch
     const response = await fetch(
-      "https://api.clarifai.com/v2/models/gpt-4o/outputs",
+      "https://api.clarifai.com/v2/models/gpt-oss-120b/outputs",
       {
         method: "POST",
         headers: {
-          Authorization: `Key ${process.env.CLARIFAI_PAT}`,
+          Authorization: `Key ${normalizedPat}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -344,7 +352,10 @@ export async function POST(req: NextRequest) {
     if (!response.ok) {
       const errorText = await response.text();
       console.error("Erreur Clarifai:", errorText);
-      throw new Error(`Clarifai API error: ${response.status}`);
+      return NextResponse.json(
+        { error: "Clarifai API error", status: response.status, details: errorText },
+        { status: 500 }
+      );
     }
 
     const data = await response.json();

@@ -92,6 +92,8 @@ function AdjustableValue({
 
   const percentage = Math.round(((value - min) / (max - min)) * 100);
   const zone = getValueZone(percentage);
+  const isTurns = unit === "tours";
+  const dialAngle = isTurns ? (value * 360) % 360 : 0;
 
   const handleIncrement = () => {
     const newValue = Math.min(value + step, max);
@@ -157,6 +159,36 @@ function AdjustableValue({
         </button>
         
         <div className="text-center">
+          {isTurns && (
+            <div className="flex items-center justify-center mb-1">
+              <div className="relative h-10 w-10">
+                <svg viewBox="0 0 100 100" className="h-full w-full">
+                  <circle cx="50" cy="50" r="40" fill="none" stroke="#27272a" strokeWidth="8" />
+                  {[0, 90, 180, 270].map((angle) => (
+                    <line
+                      key={angle}
+                      x1={50 + 30 * Math.cos((angle - 90) * Math.PI / 180)}
+                      y1={50 + 30 * Math.sin((angle - 90) * Math.PI / 180)}
+                      x2={50 + 40 * Math.cos((angle - 90) * Math.PI / 180)}
+                      y2={50 + 40 * Math.sin((angle - 90) * Math.PI / 180)}
+                      stroke="#52525b"
+                      strokeWidth="2"
+                    />
+                  ))}
+                  <circle cx="50" cy="50" r="6" fill={value >= 0 ? "#f59e0b" : "#3b82f6"} />
+                </svg>
+                <div
+                  className="absolute inset-0 flex items-center justify-center transition-transform duration-300"
+                  style={{ transform: `rotate(${dialAngle}deg)` }}
+                >
+                  <div className={cn(
+                    "w-1 h-10 rounded-full origin-bottom transform -translate-y-1",
+                    value >= 0 ? "bg-gradient-to-t from-amber-500 to-amber-300" : "bg-gradient-to-t from-blue-500 to-blue-300"
+                  )} />
+                </div>
+              </div>
+            </div>
+          )}
           <p className={cn(
             "text-lg font-bold text-white transition-transform",
             isAnimating && animDir === "up" && "animate-bounce-up",
@@ -233,14 +265,26 @@ export function ChatMessage({ message, userImage, onButtonClick, onUpdateConfig,
     let lastIndex = 0;
     let match;
 
+    const sanitizeCtaText = (value?: string) => {
+      if (!value) return undefined;
+      const cleaned = value
+        .replace(/\[BUTTON.*$/gi, "")
+        .replace(/\s*\].*$/g, "")
+        .replace(/\b(step|etape|étape|stage)\s*\d+\b/gi, "")
+        .replace(/[\[\]]/g, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+      return cleaned.length >= 2 ? cleaned : undefined;
+    };
+
     while ((match = buttonRegex.exec(content)) !== null) {
       if (match.index > lastIndex) {
         parts.push(content.slice(lastIndex, match.index));
       }
       parts.push({ 
         type: "button", 
-        text: match[1], 
-        description: match[2] || undefined,
+        text: sanitizeCtaText(match[1]) || match[1].trim(), 
+        description: sanitizeCtaText(match[2]) || undefined,
         action: match[3] 
       });
       lastIndex = match.index + match[0].length;

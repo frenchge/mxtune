@@ -85,11 +85,16 @@ export function SuspensionAdjuster({
     if (targetValue !== undefined) onChange(targetValue);
   };
 
+  const clampedValue = Math.max(effectiveMin, Math.min(value, effectiveMax));
+  const turnsRatio = isTurns && effectiveMax !== effectiveMin
+    ? (clampedValue - effectiveMin) / (effectiveMax - effectiveMin)
+    : 0;
+
   // Calculer l'angle de rotation pour le cadran
   // For clicks: 0-270 degrees based on percentage
-  // For turns: full 360° rotation based on value, each turn = 360°
-  const dialAngle = isTurns 
-    ? (value * 360) % 360 // Full rotation per turn
+  // For turns: map min..max to the same 270° sweep
+  const dialAngle = isTurns
+    ? turnsRatio * 270 - 135
     : (percentage / 100) * 270 - 135;
 
   // Render different visuals for turns vs clicks
@@ -145,9 +150,9 @@ export function SuspensionAdjuster({
                   {/* Direction indicator arc - shows direction of last turn */}
                   {value !== 0 && (
                     <path
-                      d={`M 50 10 A 40 40 0 ${Math.abs(value * 360) > 180 ? 1 : 0} ${value > 0 ? 1 : 0} ${
-                        50 + 40 * Math.sin(value * 360 * Math.PI / 180)
-                      } ${50 - 40 * Math.cos(value * 360 * Math.PI / 180)}`}
+                      d={`M 50 10 A 40 40 0 ${turnsRatio * 270 > 180 ? 1 : 0} ${value > 0 ? 1 : 0} ${
+                        50 + 40 * Math.sin((turnsRatio * 270 - 135) * Math.PI / 180)
+                      } ${50 - 40 * Math.cos((turnsRatio * 270 - 135) * Math.PI / 180)}`}
                       fill="none"
                       stroke={value > 0 ? "#f59e0b" : "#3b82f6"}
                       strokeWidth="8"
