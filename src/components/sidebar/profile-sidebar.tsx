@@ -5,7 +5,6 @@ import { useCurrentUser } from "@/hooks/use-current-user";
 import { useSidebarState } from "@/hooks/use-sidebar-state";
 import { useQuery, useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { api } from "../../../convex/_generated/api";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -209,17 +208,6 @@ export function ProfileSidebar({ onSendMessage }: ProfileSidebarProps) {
       <div className={`border-l border-zinc-800 bg-zinc-900 flex flex-col h-full transition-all duration-300 ease-in-out overflow-hidden ${isCollapsed ? 'w-0 border-l-0' : 'w-80'}`}>
         <ScrollArea className="flex-1">
           <div className="p-4 space-y-4 min-w-[304px]">
-            <div className="flex items-center justify-center">
-              <Image
-                src="/logo.png"
-                alt="MXTune Logo"
-                width={72}
-                height={72}
-                className="rounded-lg"
-                priority
-              />
-            </div>
-
             {/* Bouton Nouvelle Session */}
             <Button
               onClick={handleNewSession}
