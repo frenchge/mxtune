@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useCurrentUser } from "@/hooks/use-current-user";
@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -46,6 +47,9 @@ export default function MotosPage() {
   // Dialog states
   const [isAddMotoDialogOpen, setIsAddMotoDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [brandFilter, setBrandFilter] = useState<string>("all");
+  const [suspensionFilter, setSuspensionFilter] = useState<string>("all");
 
   // New moto form
   const [newMoto, setNewMoto] = useState({
@@ -62,6 +66,28 @@ export default function MotosPage() {
 
   const availableModels = newMoto.brand ? getModelsForBrand(newMoto.brand) : [];
   const availableYears = newMoto.brand ? getYearsForBrand(newMoto.brand) : [];
+  const brandOptions = useMemo(() => {
+    const list = motos ? Array.from(new Set(motos.map((m) => m.brand))) : [];
+    return list.sort((a, b) => a.localeCompare(b));
+  }, [motos]);
+
+  const filteredMotos = useMemo(() => {
+    if (!motos) return [];
+    const query = searchTerm.trim().toLowerCase();
+    return motos.filter((moto) => {
+      const matchesSearch = query
+        ? `${moto.brand} ${moto.model} ${moto.year}`.toLowerCase().includes(query)
+        : true;
+      const matchesBrand = brandFilter === "all" ? true : moto.brand === brandFilter;
+      const matchesSuspension =
+        suspensionFilter === "all"
+          ? true
+          : suspensionFilter === "stock"
+            ? moto.isStockSuspension !== false
+            : moto.isStockSuspension === false;
+      return matchesSearch && matchesBrand && matchesSuspension;
+    });
+  }, [motos, searchTerm, brandFilter, suspensionFilter]);
 
   // Reset model and year when brand changes
   useEffect(() => {
@@ -170,6 +196,37 @@ export default function MotosPage() {
                   <Plus className="h-4 w-4 mr-1" /> Ajouter une moto
                 </Button>
               </div>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <Input
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Rechercher une moto..."
+                  className="bg-zinc-900 border-zinc-800 h-10 text-sm w-full sm:w-72"
+                />
+                <Select value={brandFilter} onValueChange={setBrandFilter}>
+                  <SelectTrigger className="bg-zinc-900 border-zinc-800 h-10 text-sm w-full sm:w-56">
+                    <SelectValue placeholder="Toutes marques" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-900 border-zinc-800">
+                    <SelectItem value="all">Toutes marques</SelectItem>
+                    {brandOptions.map((brand) => (
+                      <SelectItem key={brand} value={brand}>
+                        {brand}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={suspensionFilter} onValueChange={setSuspensionFilter}>
+                  <SelectTrigger className="bg-zinc-900 border-zinc-800 h-10 text-sm w-full sm:w-56">
+                    <SelectValue placeholder="Toutes suspensions" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-900 border-zinc-800">
+                    <SelectItem value="all">Toutes suspensions</SelectItem>
+                    <SelectItem value="stock">Stock</SelectItem>
+                    <SelectItem value="aftermarket">Aftermarket</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Moto Cards Grid */}
@@ -188,9 +245,18 @@ export default function MotosPage() {
                       <Plus className="h-4 w-4 mr-2" /> Ajouter une moto
                     </Button>
                   </div>
+                ) : filteredMotos.length === 0 ? (
+                  <div className="text-center py-16">
+                    <Bike className="h-16 w-16 mx-auto mb-4 text-zinc-700" />
+                    <h3 className="text-lg font-semibold text-zinc-400 mb-2">Aucune moto trouvée</h3>
+                    <p className="text-zinc-500 mb-4">Essaie d&apos;ajuster tes filtres ou ta recherche</p>
+                    <Button onClick={() => { setSearchTerm(""); setBrandFilter("all"); setSuspensionFilter("all"); }} className="bg-zinc-800 hover:bg-zinc-700 text-white">
+                      Réinitialiser les filtres
+                    </Button>
+                  </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6">
-                    {motos.map((moto) => {
+                    {filteredMotos.map((moto) => {
                       const activeKit = moto.kits?.find(k => k.isDefault) || moto.kits?.[0];
                       const stockSusp = getStockSuspension(moto.brand);
                       const isAftermarket = moto.isStockSuspension === false;
