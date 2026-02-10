@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
@@ -8,6 +8,7 @@ import { useCurrentUser } from "@/hooks/use-current-user";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
@@ -25,7 +26,9 @@ import {
   UserMinus,
   Eye,
   EyeOff,
-  Bookmark
+  Bookmark,
+  Save,
+  Loader2
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -56,13 +59,9 @@ export default function UserProfilePage() {
   const { user: currentUser } = useCurrentUser();
 
   const user = useQuery(api.users.getByUsername, { username });
-  const publicConfigs = useQuery(
+  const configs = useQuery(
     api.users.getPublicConfigs,
     user?._id ? { userId: user._id } : "skip"
-  );
-  const ownConfigs = useQuery(
-    api.configs.getByUser,
-    currentUser?._id ? { userId: currentUser._id } : "skip"
   );
   const publicMotos = useQuery(
     api.motos.getPublicByUser,
@@ -101,8 +100,6 @@ export default function UserProfilePage() {
   );
 
   const toggleFollow = useMutation(api.follows.toggleFollow);
-  const updateConfig = useMutation(api.configs.update);
-  const [copiedLink, setCopiedLink] = useState<string | null>(null);
 
   const handleToggleFollow = async () => {
     if (!currentUser?._id || !user?._id) return;
@@ -111,19 +108,6 @@ export default function UserProfilePage() {
       followingId: user._id as Id<"users"> 
     });
   };
-
-  const handleVisibilityChange = async (configId: Id<"configs">, visibility: string) => {
-    await updateConfig({ configId, visibility });
-  };
-
-  const copyShareLink = (shareLink: string) => {
-    const fullUrl = `${window.location.origin}/config/${shareLink}`;
-    navigator.clipboard.writeText(fullUrl);
-    setCopiedLink(shareLink);
-    setTimeout(() => setCopiedLink(null), 2000);
-  };
-
-  const displayConfigs = isOwnProfile ? ownConfigs : publicConfigs;
 
   if (user === undefined) {
     return (
@@ -160,24 +144,19 @@ export default function UserProfilePage() {
         <SidebarProvider>
           <AppSidebar />
           <SidebarInset className="flex flex-col h-screen bg-zinc-950">
-            <div className="flex flex-1 overflow-hidden">
-              <div className="flex-1 overflow-auto">
-                <ProfileContent 
-                  user={user} 
-                  configs={displayConfigs} 
-                  publicMotos={publicMotos}
-                  savedConfigs={savedConfigs?.filter((c): c is NonNullable<typeof c> => c !== null)}
-                  followStats={followStats} 
-                  isFollowingMe={isFollowingMe} 
-                  amIFollowing={amIFollowing}
-                  isOwnProfile={!!isOwnProfile}
-                  onToggleFollow={handleToggleFollow}
-                  onVisibilityChange={handleVisibilityChange}
-                  onCopyLink={copyShareLink}
-                  copiedLink={copiedLink}
-                  showHeader={false} 
-                />
-              </div>
+            <div className="flex-1 overflow-auto">
+              <ProfileContent 
+                user={user} 
+                configs={configs} 
+                publicMotos={publicMotos}
+                savedConfigs={savedConfigs?.filter((c): c is NonNullable<typeof c> => c !== null)}
+                followStats={followStats} 
+                isFollowingMe={isFollowingMe} 
+                amIFollowing={amIFollowing}
+                isOwnProfile={!!isOwnProfile}
+                onToggleFollow={handleToggleFollow}
+                showHeader={false} 
+              />
             </div>
           </SidebarInset>
         </SidebarProvider>
@@ -187,7 +166,7 @@ export default function UserProfilePage() {
       <SignedOut>
         <ProfileContent 
           user={user} 
-          configs={displayConfigs} 
+          configs={configs} 
           publicMotos={publicMotos}
           savedConfigs={undefined}
           followStats={followStats} 
@@ -298,9 +277,6 @@ interface ProfileContentProps {
   amIFollowing?: boolean;
   isOwnProfile: boolean;
   onToggleFollow?: () => void;
-  onVisibilityChange?: (configId: Id<"configs">, visibility: string) => void;
-  onCopyLink?: (shareLink: string) => void;
-  copiedLink?: string | null;
   showHeader: boolean;
 }
 
@@ -314,13 +290,44 @@ export function ProfileContent({
   amIFollowing,
   isOwnProfile,
   onToggleFollow,
-  onVisibilityChange,
-  onCopyLink,
-  copiedLink,
   onToggleMotoVisibility,
   showHeader 
 }: ProfileContentProps) {
+  const { user: currentUser, clerkUser } = useCurrentUser();
+  const updateProfile = useMutation(api.users.updateProfile);
   const [activeTab, setActiveTab] = useState("configs");
+  const [profileWeight, setProfileWeight] = useState(user.weight ?? 75);
+  const [profileLevel, setProfileLevel] = useState(user.level ?? "");
+  const [profileStyle, setProfileStyle] = useState(user.style ?? "");
+  const [profileObjective, setProfileObjective] = useState(user.objective ?? "");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const canEditProfile = isOwnProfile && currentUser?._id === user._id;
+
+  useEffect(() => {
+    setProfileWeight(user.weight ?? 75);
+    setProfileLevel(user.level ?? "");
+    setProfileStyle(user.style ?? "");
+    setProfileObjective(user.objective ?? "");
+  }, [user._id, user.weight, user.level, user.style, user.objective]);
+
+  const handleSaveProfile = async () => {
+    if (!canEditProfile || !clerkUser?.id) return;
+
+    setIsSavingProfile(true);
+    try {
+      await updateProfile({
+        clerkId: clerkUser.id,
+        weight: profileWeight || undefined,
+        level: profileLevel || undefined,
+        style: profileStyle || undefined,
+        objective: profileObjective || undefined,
+      });
+    } catch (error) {
+      console.error("Erreur lors de la mise à jour du profil:", error);
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
   
   return (
     <div className={showHeader ? "min-h-screen bg-zinc-950" : ""}>
@@ -369,7 +376,7 @@ export function ProfileContent({
           <div className="flex-1 text-center md:text-left">
             <div className="flex items-center justify-center md:justify-start gap-2">
               <h1 className="text-3xl font-bold text-white">
-                {user.username || user.name}
+                @{user.username || user.name}
               </h1>
               {isFollowingMe && (
                 <span className="text-xs font-medium text-zinc-500 bg-zinc-800 px-2 py-1 rounded-full">
@@ -455,6 +462,15 @@ export function ProfileContent({
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="bg-zinc-900 border border-zinc-800 p-1 mb-6">
+            {isOwnProfile && (
+              <TabsTrigger 
+                value="profile" 
+                className="data-[state=active]:bg-purple-500 data-[state=active]:text-white gap-2"
+              >
+                <User className="h-4 w-4" />
+                MON PROFIL
+              </TabsTrigger>
+            )}
             <TabsTrigger 
               value="configs" 
               className="data-[state=active]:bg-purple-500 data-[state=active]:text-white gap-2"
@@ -485,7 +501,7 @@ export function ProfileContent({
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
                 <Settings2 className="h-5 w-5 text-purple-400" />
-                {isOwnProfile ? "MES CONFIGS" : "CONFIGS PUBLIQUES"}
+                CONFIGS PUBLIQUES
               </h2>
               <span className="text-sm text-zinc-500">
                 {configs?.length || 0} config{(configs?.length || 0) > 1 ? "s" : ""}
@@ -507,16 +523,10 @@ export function ProfileContent({
                   <ConfigCard 
                     key={config._id} 
                     config={config}
-                    currentUserId={user._id}
-                    isOwner={isOwnProfile}
                     showUser={false}
                     showFollowButton={false}
                     showLikeButton={true}
                     showSaveButton={false}
-                    showVisibilityControls={isOwnProfile}
-                    onVisibilityChange={isOwnProfile && onVisibilityChange ? (visibility) => onVisibilityChange(config._id as Id<"configs">, visibility) : undefined}
-                    onCopyLink={onCopyLink}
-                    copiedLink={copiedLink}
                   />
                 ))}
               </div>
@@ -560,6 +570,118 @@ export function ProfileContent({
                   ))}
                 </div>
               )}
+            </TabsContent>
+          )}
+
+          {isOwnProfile && (
+            <TabsContent value="profile" className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <User className="h-5 w-5 text-purple-400" />
+                  MON PROFIL
+                </h2>
+                <span className="text-sm text-zinc-500">Infos utilisées par l&apos;IA</span>
+              </div>
+
+              <Card className="bg-zinc-900 border-zinc-800">
+                <CardContent className="p-6 space-y-6">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-zinc-400">Poids équipé (kg)</span>
+                      <span className="text-lg font-bold text-purple-400">{profileWeight} kg</span>
+                    </div>
+                    <Slider
+                      value={[profileWeight]}
+                      onValueChange={(values) => setProfileWeight(values[0])}
+                      min={40}
+                      max={150}
+                      step={1}
+                      className="w-full"
+                    />
+                    <div className="flex justify-between text-xs text-zinc-500">
+                      <span>40 kg</span>
+                      <span>150 kg</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <span className="text-sm font-medium text-zinc-400">Niveau</span>
+                    <div className="grid grid-cols-3 gap-3">
+                      {LEVELS.map((level) => (
+                        <button
+                          key={level.value}
+                          type="button"
+                          onClick={() => setProfileLevel(level.value)}
+                          className={`p-3 rounded-lg border transition-colors ${
+                            profileLevel === level.value
+                              ? level.value === "débutant"
+                                ? "bg-emerald-500 border-transparent text-white"
+                                : level.value === "intermédiaire"
+                                  ? "bg-amber-500 border-transparent text-white"
+                                  : "bg-rose-500 border-transparent text-white"
+                              : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600"
+                          }`}
+                        >
+                          {level.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <span className="text-sm font-medium text-zinc-400">Style de pilotage</span>
+                    <div className="grid grid-cols-3 gap-3">
+                      {STYLES.map((style) => (
+                        <button
+                          key={style.value}
+                          type="button"
+                          onClick={() => setProfileStyle(style.value)}
+                          className={`p-3 rounded-lg border transition-colors ${
+                            profileStyle === style.value
+                              ? "bg-purple-500 border-transparent text-white"
+                              : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600"
+                          }`}
+                        >
+                          {style.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <span className="text-sm font-medium text-zinc-400">Objectif</span>
+                    <div className="grid grid-cols-3 gap-3">
+                      {OBJECTIVES.map((objective) => (
+                        <button
+                          key={objective.value}
+                          type="button"
+                          onClick={() => setProfileObjective(objective.value)}
+                          className={`p-3 rounded-lg border transition-colors ${
+                            profileObjective === objective.value
+                              ? "bg-purple-500 border-transparent text-white"
+                              : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600"
+                          }`}
+                        >
+                          {objective.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={handleSaveProfile}
+                    disabled={!canEditProfile || isSavingProfile}
+                    className="w-full bg-purple-500 hover:bg-purple-600 gap-2"
+                  >
+                    {isSavingProfile ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    Sauvegarder mon profil
+                  </Button>
+                </CardContent>
+              </Card>
             </TabsContent>
           )}
 

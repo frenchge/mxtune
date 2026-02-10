@@ -22,11 +22,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Sliders,
-  Bookmark,
+import { 
+  Sliders, 
+  Bookmark, 
   Plus,
   Check,
+  Settings2,
   Info,
   Loader2,
   Clock,
@@ -75,7 +76,6 @@ interface KitInfo {
 interface ClickersPanelProps {
   motoId: Id<"motos">;
   kitId: Id<"suspensionKits">;
-  userId?: Id<"users">;
   initialSettings: SuspensionSettings;
   ranges: SuspensionRanges;
   forkBrand?: string;
@@ -91,7 +91,6 @@ interface ClickersPanelProps {
 export function ClickersPanel({
   motoId,
   kitId,
-  userId,
   initialSettings,
   ranges,
   forkBrand,
@@ -115,10 +114,9 @@ export function ClickersPanel({
   
   // Configs state
   const [isApplyingConfig, setIsApplyingConfig] = useState<Id<"configs"> | null>(null);
-  const [deleteTargetConfig, setDeleteTargetConfig] = useState<Id<"configs"> | null>(null);
   
   // Queries
-  const kitConfigs = useQuery(api.configs.getByKit, userId ? { kitId, userId } : { kitId });
+  const kitConfigs = useQuery(api.configs.getByKit, { kitId });
   
   // Mutations Convex
   const updateKit = useMutation(api.suspensionKits.update);
@@ -230,10 +228,9 @@ export function ClickersPanel({
   }, [settings]);
 
   // Supprimer une config
-  const handleDeleteConfig = async () => {
-    if (!deleteTargetConfig) return;
-    await deleteConfig({ configId: deleteTargetConfig });
-    setDeleteTargetConfig(null);
+  const handleDeleteConfig = async (configId: Id<"configs">) => {
+    if (!confirm("Supprimer cette config ?")) return;
+    await deleteConfig({ configId });
   };
 
   return (
@@ -243,7 +240,10 @@ export function ClickersPanel({
         <div className="flex items-center gap-4">
           {motoBrand && <BrandLogo brand={motoBrand} size="lg" />}
           <div>
-            <h2 className="text-lg font-bold text-white">{kitName}</h2>
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <Settings2 className="h-5 w-5 text-purple-500" />
+              {kitName}
+            </h2>
             <p className="text-sm text-zinc-500">
               {motoBrand} {motoModel}
               {isDefault && (
@@ -286,7 +286,8 @@ export function ClickersPanel({
           <div className="space-y-4">
             {/* Header */}
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-white">
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <Bookmark className="h-5 w-5 text-purple-400" />
                 Configs sauvegardées
               </h3>
               <span className="text-sm text-zinc-500">
@@ -340,12 +341,12 @@ export function ClickersPanel({
                           ) : (
                             <Download className="h-3 w-3" />
                           )}
-                          Active
+                          Charger
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => setDeleteTargetConfig(config._id)}
+                          onClick={() => handleDeleteConfig(config._id)}
                           className="h-8 w-8 text-zinc-500 hover:text-red-400"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -730,37 +731,6 @@ export function ClickersPanel({
               className="bg-purple-600 hover:bg-purple-500"
             >
               Confirmer
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={Boolean(deleteTargetConfig)}
-        onOpenChange={(open) => {
-          if (!open) setDeleteTargetConfig(null);
-        }}
-      >
-        <DialogContent className="bg-zinc-900 border-zinc-800 max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-white">Supprimer la config</DialogTitle>
-            <DialogDescription>
-              Cette action est définitive. La config sera supprimée de ta liste.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="sm:justify-between">
-            <Button
-              variant="outline"
-              onClick={() => setDeleteTargetConfig(null)}
-              className="border-zinc-700 text-zinc-300"
-            >
-              Annuler
-            </Button>
-            <Button
-              onClick={handleDeleteConfig}
-              className="bg-red-600 hover:bg-red-500"
-            >
-              Supprimer
             </Button>
           </DialogFooter>
         </DialogContent>
