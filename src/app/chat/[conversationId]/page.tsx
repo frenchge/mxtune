@@ -452,7 +452,6 @@ Pour commencer, j'ai besoin de savoir comment tu souhaites procéder.
                         message={message}
                         userImage={clerkUser?.imageUrl}
                         onButtonClick={handleButtonClick}
-                        onSaveConfig={handleSaveConfig}
                         onUpdateConfig={handleUpdateConfig}
                         savedConfigId={savedConfigId}
                         baseValues={selectedKit ? {
