@@ -7,7 +7,6 @@ import { api } from "../../../../convex/_generated/api";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
-import { ProfileSidebar } from "@/components/sidebar/profile-sidebar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1125,11 +1124,10 @@ function MotoDetailPageLegacy() {
       <SidebarProvider>
         <div className="min-h-screen flex w-full bg-zinc-950 overflow-hidden">
           <AppSidebar />
-          <SidebarInset className="flex-1 !flex-row overflow-hidden">
+          <SidebarInset className="flex-1 overflow-hidden">
             <div className="flex-1 flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
             </div>
-            <ProfileSidebar />
           </SidebarInset>
         </div>
       </SidebarProvider>
@@ -1142,7 +1140,7 @@ function MotoDetailPageLegacy() {
       <SidebarProvider>
         <div className="min-h-screen flex w-full bg-zinc-950 overflow-hidden">
           <AppSidebar />
-          <SidebarInset className="flex-1 !flex-row overflow-hidden">
+          <SidebarInset className="flex-1 overflow-hidden">
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
                 <Bike className="h-16 w-16 mx-auto mb-4 text-purple-500" />
@@ -1154,7 +1152,6 @@ function MotoDetailPageLegacy() {
                 </SignInButton>
               </div>
             </div>
-            <ProfileSidebar />
           </SidebarInset>
         </div>
       </SidebarProvider>
@@ -1167,11 +1164,10 @@ function MotoDetailPageLegacy() {
       <SidebarProvider>
         <div className="min-h-screen flex w-full bg-zinc-950 overflow-hidden">
           <AppSidebar />
-          <SidebarInset className="flex-1 !flex-row overflow-hidden">
+          <SidebarInset className="flex-1 overflow-hidden">
             <div className="flex-1 flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
             </div>
-            <ProfileSidebar />
           </SidebarInset>
         </div>
       </SidebarProvider>
@@ -1184,7 +1180,7 @@ function MotoDetailPageLegacy() {
       <SidebarProvider>
         <div className="min-h-screen flex w-full bg-zinc-950 overflow-hidden">
           <AppSidebar />
-          <SidebarInset className="flex-1 !flex-row overflow-hidden">
+          <SidebarInset className="flex-1 overflow-hidden">
             <div className="flex-1 flex flex-col items-center justify-center gap-4">
               <Bike className="h-16 w-16 text-zinc-600" />
               <h2 className="text-xl font-semibold text-white">Moto introuvable</h2>
@@ -1196,7 +1192,6 @@ function MotoDetailPageLegacy() {
                 Retour à mes motos
               </Button>
             </div>
-            <ProfileSidebar />
           </SidebarInset>
         </div>
       </SidebarProvider>
@@ -1207,7 +1202,7 @@ function MotoDetailPageLegacy() {
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-zinc-950 overflow-hidden">
         <AppSidebar />
-        <SidebarInset className="flex-1 !flex-row overflow-hidden">
+        <SidebarInset className="flex-1 overflow-hidden">
           <div className="flex-1 overflow-auto">
             {/* Header */}
             <div className="sticky top-0 z-10 bg-zinc-950/80 backdrop-blur-xl border-b border-zinc-800/50">
@@ -1685,7 +1680,6 @@ function MotoDetailPageLegacy() {
                 </div>
               </div>
             </div>
-          <ProfileSidebar />
         </SidebarInset>
       </div>
 

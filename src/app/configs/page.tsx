@@ -6,7 +6,6 @@ import { api } from "../../../convex/_generated/api";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
-import { ProfileSidebar } from "@/components/sidebar/profile-sidebar";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfigCard } from "@/components/config-card";
@@ -142,9 +141,9 @@ export default function ConfigsPage() {
     await updateConfigField({ configId, field, value });
   };
 
-  const handleSaveConfig = async (config: { _id: Id<"configs"> }) => {
+  const handleSaveConfig = async (configId: Id<"configs">) => {
     if (!user?._id) return;
-    await saveConfig({ userId: user._id, configId: config._id });
+    await saveConfig({ userId: user._id, configId });
   };
 
   const handleUnsaveConfig = async (configId: Id<"configs">) => {
@@ -205,10 +204,9 @@ export default function ConfigsPage() {
     riderLevel?: string;
     riderStyle?: string;
     riderObjective?: string;
-  }>(configList: Array<T | null | undefined> | undefined): T[] => {
+  }>(configList: T[] | undefined): T[] => {
     if (!configList) return [];
-    return configList.filter((config): config is T => {
-      if (!config) return false;
+    return configList.filter(config => {
       if (brandFilter && config.motoBrand !== brandFilter) return false;
       if (modelFilter && config.motoModel !== modelFilter) return false;
       if (sportFilter && config.sportType !== sportFilter) return false;
@@ -222,7 +220,11 @@ export default function ConfigsPage() {
 
   // Appliquer les filtres à toutes les listes
   const filteredConfigs = filterConfigs(configs);
-  const filteredSavedConfigs = filterConfigs(savedConfigs);
+  const savedConfigsWithoutNulls = savedConfigs?.filter(
+    (config): config is NonNullable<NonNullable<typeof savedConfigs>[number]> =>
+      config !== null
+  );
+  const filteredSavedConfigs = filterConfigs(savedConfigsWithoutNulls);
   const filteredFollowingConfigs = filterConfigs(followingConfigs);
 
   // Fonction pour obtenir le label de période
@@ -342,7 +344,7 @@ export default function ConfigsPage() {
                         className="data-[state=active]:bg-purple-500 data-[state=active]:text-white gap-2"
                       >
                         <Settings2 className="h-4 w-4" />
-                        MES CONFIGS
+                        MES PARTAGES
                       </TabsTrigger>
                     </TabsList>
 
@@ -525,7 +527,7 @@ export default function ConfigsPage() {
                               isLiked={isConfigLiked(config._id)}
                               isFollowingUser={config.user?._id ? isUserFollowed(config.user._id as Id<"users">) : false}
                               onLike={() => handleToggleLike(config._id)}
-                              onSave={config.userId !== user?._id ? () => handleSaveConfig(config) : undefined}
+                              onSave={config.userId !== user?._id ? () => handleSaveConfig(config._id) : undefined}
                               onUnsave={config.userId !== user?._id ? () => handleUnsaveConfig(config._id) : undefined}
                               onDelete={config.userId === user?._id ? () => handleDelete(config._id) : undefined}
                               onVisibilityChange={config.userId === user?._id ? (v) => handleVisibilityChange(config._id, v) : undefined}
@@ -554,7 +556,7 @@ export default function ConfigsPage() {
                           isLiked={isConfigLiked(config._id)}
                           isFollowingUser={config.user?._id ? isUserFollowed(config.user._id as Id<"users">) : false}
                           onLike={() => handleToggleLike(config._id)}
-                          onSave={() => handleSaveConfig(config)}
+                          onSave={() => handleSaveConfig(config._id)}
                           onUnsave={() => handleUnsaveConfig(config._id)}
                           onToggleFollow={config.user?._id ? () => handleToggleFollow(config.user!._id as Id<"users">) : undefined}
                         />
@@ -582,8 +584,6 @@ export default function ConfigsPage() {
                   </Tabs>
                 </div>
               </div>
-
-              <ProfileSidebar />
             </div>
           </SidebarInset>
         </SidebarProvider>

@@ -191,18 +191,19 @@ export function AppSidebar() {
         <Separator className="bg-zinc-800 my-2" />
 
         <SidebarGroup className="flex-1 flex flex-col min-h-0">
-          <SidebarGroupLabel className="flex items-center justify-between px-2 shrink-0">
+          <div className="px-2 pb-2 shrink-0">
+            <Button
+              onClick={handleNewConversation}
+              className="w-full bg-purple-500 hover:bg-purple-600 gap-2 font-bold italic"
+            >
+              <Plus className="h-4 w-4" />
+              Nouvelle session
+            </Button>
+          </div>
+          <SidebarGroupLabel className="px-2 shrink-0">
             <span className="text-zinc-500 text-xs uppercase tracking-wider">
               Conversations
             </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 hover:bg-zinc-800"
-              onClick={handleNewConversation}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
           </SidebarGroupLabel>
           <SidebarGroupContent className="flex-1 min-h-0">
             <ScrollArea className="h-full">
