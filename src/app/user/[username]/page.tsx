@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
-import { ProfileSidebar } from "@/components/sidebar/profile-sidebar";
 import { ConfigCard } from "@/components/config-card";
 import { SignedIn, SignedOut } from "@clerk/nextjs";
 import { 
@@ -179,7 +178,6 @@ export default function UserProfilePage() {
                   showHeader={false} 
                 />
               </div>
-              <ProfileSidebar />
             </div>
           </SidebarInset>
         </SidebarProvider>

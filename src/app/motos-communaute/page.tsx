@@ -8,7 +8,6 @@ import { Id } from "../../../convex/_generated/dataModel";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
-import { ProfileSidebar } from "@/components/sidebar/profile-sidebar";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
@@ -154,8 +153,6 @@ export default function MotosCommunautePage() {
                   </div>
                 </div>
               </div>
-
-              <ProfileSidebar />
             </div>
           </SidebarInset>
         </SidebarProvider>

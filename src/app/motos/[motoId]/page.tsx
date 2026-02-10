@@ -225,11 +225,10 @@ export default function MotoDetailPage() {
       <SidebarProvider>
         <div className="h-screen flex w-full bg-zinc-950 overflow-hidden">
           <AppSidebar />
-          <SidebarInset className="flex-1 !flex-row overflow-hidden min-h-0">
+          <SidebarInset className="flex-1 overflow-hidden min-h-0">
             <div className="flex-1 flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
             </div>
-            <ProfileSidebar />
           </SidebarInset>
         </div>
       </SidebarProvider>
@@ -241,7 +240,7 @@ export default function MotoDetailPage() {
       <SidebarProvider>
         <div className="h-screen flex w-full bg-zinc-950 overflow-hidden">
           <AppSidebar />
-          <SidebarInset className="flex-1 !flex-row overflow-hidden min-h-0">
+          <SidebarInset className="flex-1 overflow-hidden min-h-0">
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
                 <Bike className="h-16 w-16 mx-auto mb-4 text-purple-500" />
@@ -251,7 +250,6 @@ export default function MotoDetailPage() {
                 </SignInButton>
               </div>
             </div>
-            <ProfileSidebar />
           </SidebarInset>
         </div>
       </SidebarProvider>
@@ -263,11 +261,10 @@ export default function MotoDetailPage() {
       <SidebarProvider>
         <div className="h-screen flex w-full bg-zinc-950 overflow-hidden">
           <AppSidebar />
-          <SidebarInset className="flex-1 !flex-row overflow-hidden">
+          <SidebarInset className="flex-1 overflow-hidden">
             <div className="flex-1 flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
             </div>
-            <ProfileSidebar />
           </SidebarInset>
         </div>
       </SidebarProvider>
@@ -668,7 +665,6 @@ export default function MotoDetailPage() {
               </div>
             </ScrollArea>
           </div>
-          <ProfileSidebar />
         </SidebarInset>
       </div>
 

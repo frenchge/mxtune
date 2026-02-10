@@ -7,7 +7,6 @@ import { useCurrentUser } from "@/hooks/use-current-user";
 import { useRouter } from "next/navigation";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
-import { ProfileSidebar } from "@/components/sidebar/profile-sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AutocompleteInput } from "@/components/ui/autocomplete-input";
@@ -143,9 +142,8 @@ export default function MotosPage() {
       <SidebarProvider>
         <div className="h-screen flex w-full bg-zinc-950 overflow-hidden">
           <AppSidebar />
-          <SidebarInset className="flex-1 !flex-row overflow-hidden">
+          <SidebarInset className="flex-1 overflow-hidden">
             <div className="flex-1 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-purple-500" /></div>
-            <ProfileSidebar />
           </SidebarInset>
         </div>
       </SidebarProvider>
@@ -157,7 +155,7 @@ export default function MotosPage() {
       <SidebarProvider>
         <div className="h-screen flex w-full bg-zinc-950 overflow-hidden">
           <AppSidebar />
-          <SidebarInset className="flex-1 !flex-row overflow-hidden">
+          <SidebarInset className="flex-1 overflow-hidden">
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
                 <Bike className="h-16 w-16 mx-auto mb-4 text-purple-500" />
@@ -165,7 +163,6 @@ export default function MotosPage() {
                 <SignInButton><Button className="bg-purple-600 hover:bg-purple-500">Se connecter</Button></SignInButton>
               </div>
             </div>
-            <ProfileSidebar />
           </SidebarInset>
         </div>
       </SidebarProvider>
@@ -326,7 +323,6 @@ export default function MotosPage() {
               </div>
             </ScrollArea>
           </div>
-          <ProfileSidebar />
         </SidebarInset>
       </div>
 
