@@ -130,6 +130,7 @@ export function AppSidebar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { user } = useCurrentUser();
+  const [isUserButtonMounted, setIsUserButtonMounted] = React.useState(false);
   const [openNavSections, setOpenNavSections] = React.useState<
     Record<string, boolean>
   >({
@@ -197,6 +198,10 @@ export function AppSidebar() {
     }
     return conv.title;
   };
+
+  React.useEffect(() => {
+    setIsUserButtonMounted(true);
+  }, []);
 
   React.useEffect(() => {
     setOpenNavSections((current) => ({
@@ -551,13 +556,17 @@ export function AppSidebar() {
 
       <SidebarFooter className="p-4 border-t border-zinc-800">
         <div className="flex items-center gap-3">
-          <UserButton
-            appearance={{
-              elements: {
-                avatarBox: "h-8 w-8",
-              },
-            }}
-          />
+          {isUserButtonMounted ? (
+            <UserButton
+              appearance={{
+                elements: {
+                  avatarBox: "h-8 w-8",
+                },
+              }}
+            />
+          ) : (
+            <div className="h-8 w-8 rounded-full border border-zinc-700 bg-zinc-800" />
+          )}
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate">
               {usernameHandle(user?.username)}

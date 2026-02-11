@@ -704,7 +704,7 @@ export default function MotoDetailPage() {
         <SidebarInset className="flex-1 overflow-hidden bg-zinc-950">
           <div className="flex h-full flex-col">
             <div className="shrink-0 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur px-4 py-3">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Button
                     size="icon"
