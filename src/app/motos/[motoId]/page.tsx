@@ -1,17 +1,17 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { useQuery, useMutation } from "convex/react";
+import { useEffect, useRef, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -20,16 +20,57 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SignInButton, useAuth } from "@clerk/nextjs";
-import { 
-  ArrowLeft, Bike, Plus, Trash2, Loader2, Eye, EyeOff, 
-  Wrench, Settings2, MapPin, Star, Edit3, Save, X,
-  Calendar, Package, ImageIcon, Upload, Sliders
+import {
+  ArrowLeft,
+  Bike,
+  Plus,
+  Trash2,
+  Loader2,
+  Wrench,
+  Package,
+  Star,
+  Check,
+  Sliders,
+  Copy,
+  Edit3,
+  MoreHorizontal,
+  Info,
+  ListChecks,
+  Sparkles,
+  ImagePlus,
 } from "lucide-react";
 import { Id } from "../../../../convex/_generated/dataModel";
-import { BRANDS, getModelsForBrand, getYearsForBrand, getStockSuspension } from "@/data/moto-models";
+import { getStockSuspension } from "@/data/moto-models";
+import { getForkBrands, getShockBrands } from "@/data/suspension-brands";
 import { BrandLogo } from "@/components/ui/brand-logo";
-import { ClickersPanel } from "@/components/clickers";
-import { KitConfigSection } from "@/components/kit-config-section";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+type DetailTab = "moto" | "kits" | "configs";
+type ConfigSortOrder = "recent" | "oldest";
+
+interface KitDraft {
+  name: string;
+  description: string;
+  sportType: string;
+  terrainType: string;
+  isStockSuspension: boolean;
+  forkBrand: string;
+  forkModel: string;
+  shockBrand: string;
+  shockModel: string;
+  forkSpringRate: string;
+  shockSpringRate: string;
+  forkOilWeight: string;
+  forkOilLevel: string;
+  valvingNotes: string;
+  otherMods: string;
+}
 
 const TERRAIN_TYPES = [
   { value: "sable", label: "Sable" },
@@ -46,49 +87,218 @@ const SPORT_TYPES = [
   { value: "trail", label: "Trail" },
 ];
 
+const createKitDraft = (kit: {
+  name: string;
+  description?: string;
+  sportType?: string;
+  terrainType?: string;
+  isStockSuspension?: boolean;
+  forkBrand?: string;
+  forkModel?: string;
+  shockBrand?: string;
+  shockModel?: string;
+  forkSpringRate?: string;
+  shockSpringRate?: string;
+  forkOilWeight?: string;
+  forkOilLevel?: string;
+  valvingNotes?: string;
+  otherMods?: string;
+}): KitDraft => ({
+  name: kit.name,
+  description: kit.description || "",
+  sportType: kit.sportType || "",
+  terrainType: kit.terrainType || "",
+  isStockSuspension: kit.isStockSuspension ?? true,
+  forkBrand: kit.forkBrand || "",
+  forkModel: kit.forkModel || "",
+  shockBrand: kit.shockBrand || "",
+  shockModel: kit.shockModel || "",
+  forkSpringRate: kit.forkSpringRate || "",
+  shockSpringRate: kit.shockSpringRate || "",
+  forkOilWeight: kit.forkOilWeight || "",
+  forkOilLevel: kit.forkOilLevel || "",
+  valvingNotes: kit.valvingNotes || "",
+  otherMods: kit.otherMods || "",
+});
+
+const isDetailTab = (value: string | null): value is DetailTab =>
+  value === "moto" || value === "kits" || value === "configs";
+
+function KitConfigsList({
+  kitId,
+  selectedConfigId,
+  onSelectConfig,
+  onSetActiveConfig,
+  sortOrder,
+}: {
+  kitId: Id<"suspensionKits">;
+  selectedConfigId: Id<"configs"> | null;
+  onSelectConfig: (configId: Id<"configs">) => void;
+  onSetActiveConfig: (configId: Id<"configs">) => void;
+  sortOrder: ConfigSortOrder;
+}) {
+  const configs = useQuery(api.configs.getByKit, { kitId });
+
+  if (!configs) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Loader2 className="h-5 w-5 animate-spin text-zinc-500" />
+      </div>
+    );
+  }
+
+  if (configs.length === 0) {
+    return (
+      <div className="text-center py-8 px-4">
+        <Sliders className="h-10 w-10 mx-auto mb-3 text-zinc-700" />
+        <p className="text-zinc-400 text-sm mb-1">Aucun réglage sauvegardé</p>
+        <p className="text-zinc-500 text-xs">
+          Crée une config depuis le chat IA, puis reviens ici.
+        </p>
+      </div>
+    );
+  }
+
+  const sortedConfigs = [...configs].sort((a, b) =>
+    sortOrder === "oldest" ? a.createdAt - b.createdAt : b.createdAt - a.createdAt
+  );
+
+  return (
+    <div className="space-y-3">
+      {sortedConfigs.map((config) => (
+        <div
+          key={config._id}
+          onClick={() => onSelectConfig(config._id)}
+          className={`rounded-xl border p-4 cursor-pointer transition-all ${
+            selectedConfigId === config._id
+              ? "border-purple-500/40 bg-purple-500/10"
+              : "border-zinc-800 bg-black/50 hover:border-zinc-700"
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
+                <h4 className="font-semibold text-white truncate">{config.name}</h4>
+                {selectedConfigId === config._id && (
+                  <Badge className="bg-emerald-500/20 border border-emerald-500/30 text-emerald-400">
+                    Config active
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-zinc-500 mt-1">
+                {new Date(config.createdAt).toLocaleDateString("fr-FR", {
+                  day: "2-digit",
+                  month: "2-digit",
+                  year: "2-digit",
+                })}
+              </p>
+            </div>
+
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSetActiveConfig(config._id);
+              }}
+              className="h-7 px-2 text-xs text-zinc-300 hover:text-purple-300 shrink-0"
+            >
+              <Sliders className="h-3 w-3 mr-1" />
+              Appliquer
+            </Button>
+          </div>
+
+          <div className="flex flex-wrap gap-2 text-xs mb-3">
+            {config.riderWeight && (
+              <Badge variant="outline" className="border-zinc-700 text-zinc-300">
+                {config.riderWeight} kg
+              </Badge>
+            )}
+            {config.terrainType && (
+              <Badge variant="outline" className="border-zinc-700 text-zinc-300">
+                {TERRAIN_TYPES.find((terrain) => terrain.value === config.terrainType)
+                  ?.label || config.terrainType}
+              </Badge>
+            )}
+            {config.sportType && (
+              <Badge variant="outline" className="border-zinc-700 text-zinc-300">
+                {SPORT_TYPES.find((sport) => sport.value === config.sportType)?.label ||
+                  config.sportType}
+              </Badge>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 text-xs">
+            <div className="rounded-md border border-zinc-800 bg-zinc-900/60 p-2 text-center">
+              <p className="text-zinc-500">F.C</p>
+              <p className="text-white font-semibold">{config.forkCompression ?? "-"}</p>
+            </div>
+            <div className="rounded-md border border-zinc-800 bg-zinc-900/60 p-2 text-center">
+              <p className="text-zinc-500">F.D</p>
+              <p className="text-white font-semibold">{config.forkRebound ?? "-"}</p>
+            </div>
+            <div className="rounded-md border border-zinc-800 bg-zinc-900/60 p-2 text-center">
+              <p className="text-zinc-500">BV</p>
+              <p className="text-white font-semibold">{config.shockCompressionLow ?? "-"}</p>
+            </div>
+            <div className="rounded-md border border-zinc-800 bg-zinc-900/60 p-2 text-center">
+              <p className="text-zinc-500">HV</p>
+              <p className="text-white font-semibold">{config.shockCompressionHigh ?? "-"}</p>
+            </div>
+            <div className="rounded-md border border-zinc-800 bg-zinc-900/60 p-2 text-center">
+              <p className="text-zinc-500">S.D</p>
+              <p className="text-white font-semibold">{config.shockRebound ?? "-"}</p>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function MotoDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const motoId = params.motoId as Id<"motos">;
+  const searchParams = useSearchParams();
   const { isLoaded: authLoaded, isSignedIn } = useAuth();
-  
   const { user } = useCurrentUser();
-  const moto = useQuery(api.motos.getById, { motoId });
-  
-  const updateMoto = useMutation(api.motos.update);
+  const motoId = params.motoId as Id<"motos">;
+
+  const selectedMoto = useQuery(api.motos.getById, { motoId });
+
   const deleteMoto = useMutation(api.motos.remove);
   const createKit = useMutation(api.suspensionKits.create);
   const deleteKit = useMutation(api.suspensionKits.remove);
   const setDefaultKit = useMutation(api.suspensionKits.setDefault);
   const updateKit = useMutation(api.suspensionKits.update);
-  
-  // File storage mutations
+  const duplicateKit = useMutation(api.suspensionKits.duplicate);
+  const createConversation = useMutation(api.conversations.create);
   const generateUploadUrl = useMutation(api.files.generateUploadUrl);
   const addImageToMoto = useMutation(api.files.addImageToMoto);
   const removeImageFromMoto = useMutation(api.files.removeImageFromMoto);
-  
-  // Query for image URLs
-  const imageUrls = useQuery(
-    api.files.getUrls,
-    moto?.images && moto.images.length > 0 ? { storageIds: moto.images } : "skip"
-  );
 
-  const [isEditing, setIsEditing] = useState(false);
+  const [activeTab, setActiveTab] = useState<DetailTab>("moto");
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [configSortOrder, setConfigSortOrder] = useState<ConfigSortOrder>("recent");
+  const motoImageInputRef = useRef<HTMLInputElement>(null);
+
+  const [selectedKitId, setSelectedKitId] = useState<Id<"suspensionKits"> | null>(null);
+  const [selectedConfigId, setSelectedConfigId] = useState<Id<"configs"> | null>(null);
+  const [kitDrafts, setKitDrafts] = useState<Record<string, KitDraft>>({});
+  const [savingKitId, setSavingKitId] = useState<Id<"suspensionKits"> | null>(null);
+
   const [isKitDialogOpen, setIsKitDialogOpen] = useState(false);
-  const [editingKitId, setEditingKitId] = useState<Id<"suspensionKits"> | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [clickersKitId, setClickersKitId] = useState<Id<"suspensionKits"> | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isConfigChoiceDialogOpen, setIsConfigChoiceDialogOpen] = useState(false);
+  const [renameKitId, setRenameKitId] = useState<Id<"suspensionKits"> | null>(null);
+  const [renameKitName, setRenameKitName] = useState("");
+  const [isLaunchingAssistedConfig, setIsLaunchingAssistedConfig] = useState(false);
 
-  const [editedMoto, setEditedMoto] = useState({
-    brand: "",
-    model: "",
-    year: 2024,
-    isPublic: false,
-  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [isUploadingMotoImage, setIsUploadingMotoImage] = useState(false);
+  const [removingMotoImageId, setRemovingMotoImageId] = useState<Id<"_storage"> | null>(
+    null
+  );
 
   const [newKit, setNewKit] = useState({
     name: "",
@@ -103,71 +313,80 @@ export default function MotoDetailPage() {
     shockModel: "",
     forkSpringRate: "",
     shockSpringRate: "",
-    forkOilWeight: "",
-    forkOilLevel: "",
-    valvingNotes: "",
-    otherMods: "",
   });
 
-  // Vérifier si l'utilisateur est propriétaire
-  const isOwner = user?._id === moto?.userId;
+  const isOwner = user?._id === selectedMoto?.userId;
+  const stockSuspension = selectedMoto?.brand
+    ? getStockSuspension(selectedMoto.brand)
+    : null;
+  const activeKit = selectedMoto?.kits?.find((kit) => kit.isDefault) || selectedMoto?.kits?.[0];
 
-  const stockSuspension = moto?.brand ? getStockSuspension(moto.brand) : null;
+  const selectedMotoImages = selectedMoto?.images || [];
+  const selectedMotoImageEntries = useQuery(
+    api.files.getUrls,
+    selectedMotoImages.length > 0 ? { storageIds: selectedMotoImages } : "skip"
+  );
 
-  const startEditing = () => {
-    if (moto) {
-      setEditedMoto({
-        brand: moto.brand,
-        model: moto.model,
-        year: moto.year,
-        isPublic: moto.isPublic || false,
-      });
-      setIsEditing(true);
+  const selectedMotoImageItems =
+    selectedMotoImageEntries
+      ?.filter((entry): entry is { id: Id<"_storage">; url: string } => !!entry.url)
+      .map((entry) => ({ id: entry.id, url: entry.url })) || [];
+
+  const selectedMotoImageUrls = selectedMotoImageItems.map((entry) => entry.url);
+
+  useEffect(() => {
+    if (!selectedMoto) return;
+
+    const requestedTab = searchParams.get("tab");
+    setActiveTab(isDetailTab(requestedTab) ? requestedTab : "moto");
+    setSelectedImageIndex(0);
+    setConfigSortOrder("recent");
+
+    const defaultKit = selectedMoto.kits?.find((kit) => kit.isDefault) || selectedMoto.kits?.[0];
+    setSelectedKitId(defaultKit?._id || null);
+    setSelectedConfigId(null);
+    setKitDrafts(
+      Object.fromEntries(selectedMoto.kits.map((kit) => [kit._id, createKitDraft(kit)]))
+    );
+  }, [selectedMoto, searchParams]);
+
+  useEffect(() => {
+    if (selectedMotoImageUrls.length === 0 && selectedImageIndex !== 0) {
+      setSelectedImageIndex(0);
+      return;
     }
-  };
 
-  const cancelEditing = () => {
-    setIsEditing(false);
-  };
-
-  const saveChanges = async () => {
-    if (!moto) return;
-    setIsSaving(true);
-    try {
-      await updateMoto({
-        motoId: moto._id,
-        brand: editedMoto.brand,
-        model: editedMoto.model,
-        year: editedMoto.year,
-        isPublic: editedMoto.isPublic,
-      });
-      setIsEditing(false);
-    } catch (error) {
-      console.error("Erreur lors de la sauvegarde:", error);
-    } finally {
-      setIsSaving(false);
+    if (
+      selectedImageIndex >= selectedMotoImageUrls.length &&
+      selectedMotoImageUrls.length > 0
+    ) {
+      setSelectedImageIndex(selectedMotoImageUrls.length - 1);
     }
-  };
+  }, [selectedMotoImageUrls.length, selectedImageIndex]);
+
+  const sortedKits = selectedMoto?.kits
+    ? [...selectedMoto.kits].sort((a, b) => {
+        if (a.isDefault && !b.isDefault) return -1;
+        if (!a.isDefault && b.isDefault) return 1;
+        return 0;
+      })
+    : [];
 
   const handleDeleteMoto = async () => {
-    if (!moto || !confirm("Supprimer cette moto et tous ses kits ?")) return;
+    if (!selectedMoto || !confirm("Supprimer cette moto et tous ses kits ?")) return;
+
     try {
-      await deleteMoto({ motoId: moto._id });
+      await deleteMoto({ motoId: selectedMoto._id });
       router.push("/motos");
     } catch (error) {
       console.error("Erreur lors de la suppression:", error);
     }
   };
 
-  const handleTogglePublic = async () => {
-    if (!moto) return;
-    await updateMoto({
-      motoId: moto._id,
-      isPublic: !moto.isPublic,
-    });
-  };
+  const handleOpenKitDialog = () => {
+    if (!selectedMoto) return;
 
-  const resetKitForm = () => {
+    const stockSusp = getStockSuspension(selectedMoto.brand);
     setNewKit({
       name: "",
       description: "",
@@ -175,186 +394,229 @@ export default function MotoDetailPage() {
       sportType: "",
       country: "",
       isStockSuspension: true,
-      forkBrand: "",
-      forkModel: "",
-      shockBrand: "",
-      shockModel: "",
+      forkBrand: stockSusp?.forkBrand || "",
+      forkModel: stockSusp?.forkModel || "",
+      shockBrand: stockSusp?.shockBrand || "",
+      shockModel: stockSusp?.shockModel || "",
       forkSpringRate: "",
       shockSpringRate: "",
-      forkOilWeight: "",
-      forkOilLevel: "",
-      valvingNotes: "",
-      otherMods: "",
     });
-    setEditingKitId(null);
-  };
-
-  const openKitDialog = (kitId?: Id<"suspensionKits">) => {
-    if (kitId && moto?.kits) {
-      const kit = moto.kits.find(k => k._id === kitId);
-      if (kit) {
-        setNewKit({
-          name: kit.name,
-          description: kit.description || "",
-          terrainType: kit.terrainType || "",
-          sportType: kit.sportType || "",
-          country: kit.country || "",
-          isStockSuspension: kit.isStockSuspension ?? true,
-          forkBrand: kit.forkBrand || "",
-          forkModel: kit.forkModel || "",
-          shockBrand: kit.shockBrand || "",
-          shockModel: kit.shockModel || "",
-          forkSpringRate: kit.forkSpringRate || "",
-          shockSpringRate: kit.shockSpringRate || "",
-          forkOilWeight: kit.forkOilWeight || "",
-          forkOilLevel: kit.forkOilLevel || "",
-          valvingNotes: kit.valvingNotes || "",
-          otherMods: kit.otherMods || "",
-        });
-        setEditingKitId(kitId);
-      }
-    } else {
-      resetKitForm();
-    }
     setIsKitDialogOpen(true);
   };
 
   const handleSaveKit = async () => {
-    if (!user?._id || !moto || !newKit.name) return;
+    if (!selectedMoto || !user?._id || !newKit.name) return;
+
     setIsLoading(true);
     try {
-      if (editingKitId) {
-        await updateKit({
-          kitId: editingKitId,
-          name: newKit.name,
-          description: newKit.description || undefined,
-          terrainType: newKit.terrainType || undefined,
-          sportType: newKit.sportType || undefined,
-          country: newKit.country || undefined,
-          isStockSuspension: newKit.isStockSuspension,
-          forkBrand: newKit.forkBrand || undefined,
-          forkModel: newKit.forkModel || undefined,
-          shockBrand: newKit.shockBrand || undefined,
-          shockModel: newKit.shockModel || undefined,
-          forkSpringRate: newKit.forkSpringRate || undefined,
-          shockSpringRate: newKit.shockSpringRate || undefined,
-          forkOilWeight: newKit.forkOilWeight || undefined,
-          forkOilLevel: newKit.forkOilLevel || undefined,
-          valvingNotes: newKit.valvingNotes || undefined,
-          otherMods: newKit.otherMods || undefined,
-        });
-      } else {
-        await createKit({
-          motoId: moto._id,
-          userId: user._id,
-          name: newKit.name,
-          description: newKit.description || undefined,
-          terrainType: newKit.terrainType || undefined,
-          sportType: newKit.sportType || undefined,
-          country: newKit.country || undefined,
-          isStockSuspension: newKit.isStockSuspension,
-          forkBrand: newKit.forkBrand || undefined,
-          forkModel: newKit.forkModel || undefined,
-          shockBrand: newKit.shockBrand || undefined,
-          shockModel: newKit.shockModel || undefined,
-          forkSpringRate: newKit.forkSpringRate || undefined,
-          shockSpringRate: newKit.shockSpringRate || undefined,
-          forkOilWeight: newKit.forkOilWeight || undefined,
-          forkOilLevel: newKit.forkOilLevel || undefined,
-          valvingNotes: newKit.valvingNotes || undefined,
-          otherMods: newKit.otherMods || undefined,
-        });
-      }
+      await createKit({
+        userId: user._id,
+        motoId: selectedMoto._id,
+        name: newKit.name,
+        description: newKit.description || undefined,
+        terrainType: newKit.terrainType || undefined,
+        sportType: newKit.sportType || undefined,
+        country: newKit.country || undefined,
+        isStockSuspension: newKit.isStockSuspension,
+        forkBrand: newKit.forkBrand || undefined,
+        forkModel: newKit.forkModel || undefined,
+        shockBrand: newKit.shockBrand || undefined,
+        shockModel: newKit.shockModel || undefined,
+        forkSpringRate: newKit.forkSpringRate || undefined,
+        shockSpringRate: newKit.shockSpringRate || undefined,
+      });
       setIsKitDialogOpen(false);
-      resetKitForm();
     } catch (error) {
-      console.error("Erreur lors de la sauvegarde du kit:", error);
+      console.error("Erreur lors de la création du kit:", error);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleDeleteKit = async (kitId: Id<"suspensionKits">) => {
-    if (!confirm("Supprimer ce kit ?")) return;
-    try {
-      await deleteKit({ kitId });
-    } catch (error) {
-      console.error("Erreur lors de la suppression:", error);
+    if (!confirm("Supprimer ce kit et tous ses réglages ?")) return;
+
+    await deleteKit({ kitId });
+    if (selectedKitId === kitId) {
+      setSelectedKitId(null);
     }
   };
 
   const handleSetDefaultKit = async (kitId: Id<"suspensionKits">) => {
+    await setDefaultKit({ kitId });
+  };
+
+  const handleRenameKit = async () => {
+    if (!renameKitId || !renameKitName.trim()) return;
+
+    await updateKit({ kitId: renameKitId, name: renameKitName.trim() });
+    setRenameKitId(null);
+    setRenameKitName("");
+  };
+
+  const handleDuplicateKit = async (kitId: Id<"suspensionKits">) => {
+    await duplicateKit({ kitId });
+  };
+
+  const openRenameDialog = (kitId: Id<"suspensionKits">, currentName: string) => {
+    setRenameKitId(kitId);
+    setRenameKitName(currentName);
+  };
+
+  const handleSetActiveConfig = async (configId: Id<"configs">) => {
+    console.log("Set active config:", configId);
+  };
+
+  const handleLaunchAssistedConfig = async () => {
+    if (!user?._id || !selectedMoto) return;
+
+    setIsLaunchingAssistedConfig(true);
     try {
-      await setDefaultKit({ kitId });
+      const conversationId = await createConversation({
+        userId: user._id,
+        motoId: selectedMoto._id,
+        title: "Nouvelle session",
+      });
+
+      const queryParams = new URLSearchParams({ motoId: selectedMoto._id });
+      if (selectedKitId) {
+        queryParams.set("kitId", selectedKitId);
+      }
+
+      setIsConfigChoiceDialogOpen(false);
+      router.push(`/chat/${conversationId}?${queryParams.toString()}`);
     } catch (error) {
-      console.error("Erreur:", error);
+      console.error("Erreur lors du lancement de la config assistée:", error);
+    } finally {
+      setIsLaunchingAssistedConfig(false);
     }
   };
 
-  // Image upload handler
-  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLaunchManualConfig = () => {
+    if (!selectedMoto) return;
+
+    const queryParams = new URLSearchParams();
+    if (selectedKitId) {
+      queryParams.set("kitId", selectedKitId);
+    }
+
+    setIsConfigChoiceDialogOpen(false);
+    router.push(
+      `/motos/${selectedMoto._id}/configs/new${
+        queryParams.toString() ? `?${queryParams.toString()}` : ""
+      }`
+    );
+  };
+
+  const handleUploadMotoImage = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !moto) return;
+    if (!file || !selectedMoto) return;
 
-    // Vérifier le type de fichier
     if (!file.type.startsWith("image/")) {
-      alert("Veuillez sélectionner une image");
+      alert("Veuillez sélectionner une image.");
       return;
     }
 
-    // Limite de taille (5MB)
     if (file.size > 5 * 1024 * 1024) {
-      alert("L'image ne doit pas dépasser 5MB");
+      alert("L'image ne doit pas dépasser 5 MB.");
       return;
     }
 
-    setIsUploadingImage(true);
+    setIsUploadingMotoImage(true);
     try {
-      // Obtenir l'URL de téléchargement
       const uploadUrl = await generateUploadUrl();
-      
-      // Uploader le fichier
-      const result = await fetch(uploadUrl, {
+      const uploadResponse = await fetch(uploadUrl, {
         method: "POST",
         headers: { "Content-Type": file.type },
         body: file,
       });
-      
-      const { storageId } = await result.json();
-      
-      // Ajouter l'image à la moto
-      await addImageToMoto({ motoId: moto._id, storageId });
+
+      const payload = await uploadResponse.json();
+      const storageId = payload.storageId as Id<"_storage"> | undefined;
+      if (!storageId) {
+        throw new Error("Réponse upload invalide");
+      }
+
+      await addImageToMoto({ motoId: selectedMoto._id, storageId });
+      if (selectedMotoImageUrls.length === 0) {
+        setSelectedImageIndex(0);
+      }
     } catch (error) {
-      console.error("Erreur lors de l'upload:", error);
-      alert("Erreur lors de l'upload de l'image");
+      console.error("Erreur lors de l'upload de la photo:", error);
+      alert("Impossible d'ajouter cette photo pour le moment.");
     } finally {
-      setIsUploadingImage(false);
-      // Reset the file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+      setIsUploadingMotoImage(false);
+      if (motoImageInputRef.current) {
+        motoImageInputRef.current.value = "";
       }
     }
   };
 
-  // Image delete handler
-  const handleDeleteImage = async (storageId: Id<"_storage">) => {
-    if (!moto || !confirm("Supprimer cette image ?")) return;
+  const handleRemoveMotoImage = async (storageId: Id<"_storage">) => {
+    if (!selectedMoto) return;
+
+    setRemovingMotoImageId(storageId);
     try {
-      await removeImageFromMoto({ motoId: moto._id, storageId });
-      setSelectedImage(null);
+      await removeImageFromMoto({ motoId: selectedMoto._id, storageId });
     } catch (error) {
-      console.error("Erreur lors de la suppression:", error);
+      console.error("Erreur lors de la suppression de la photo:", error);
+    } finally {
+      setRemovingMotoImageId(null);
     }
   };
 
-  const availableModels = editedMoto.brand ? getModelsForBrand(editedMoto.brand) : [];
-  const availableYears = editedMoto.brand ? getYearsForBrand(editedMoto.brand) : [];
+  const handleKitDraftChange = (
+    kitId: Id<"suspensionKits">,
+    updates: Partial<KitDraft>
+  ) => {
+    const sourceKit = selectedMoto?.kits?.find((kit) => kit._id === kitId);
+    if (!sourceKit) return;
 
-  // Auth loading state - wait for Clerk to determine auth state
+    setKitDrafts((prev) => ({
+      ...prev,
+      [kitId]: {
+        ...(prev[kitId] || createKitDraft(sourceKit)),
+        ...updates,
+      },
+    }));
+  };
+
+  const handleSaveInlineKit = async (kitId: Id<"suspensionKits">) => {
+    const sourceKit = selectedMoto?.kits?.find((kit) => kit._id === kitId);
+    const draft = kitDrafts[kitId];
+    if (!sourceKit || !draft?.name.trim()) return;
+
+    setSavingKitId(kitId);
+    try {
+      await updateKit({
+        kitId,
+        name: draft.name.trim(),
+        description: draft.description || undefined,
+        sportType: draft.sportType || undefined,
+        terrainType: draft.terrainType || undefined,
+        isStockSuspension: draft.isStockSuspension,
+        forkBrand: draft.forkBrand || undefined,
+        forkModel: draft.forkModel || undefined,
+        shockBrand: draft.shockBrand || undefined,
+        shockModel: draft.shockModel || undefined,
+        forkSpringRate: draft.forkSpringRate || undefined,
+        shockSpringRate: draft.shockSpringRate || undefined,
+        forkOilWeight: draft.forkOilWeight || undefined,
+        forkOilLevel: draft.forkOilLevel || undefined,
+        valvingNotes: draft.valvingNotes || undefined,
+        otherMods: draft.otherMods || undefined,
+      });
+    } catch (error) {
+      console.error("Erreur lors de la sauvegarde du kit:", error);
+    } finally {
+      setSavingKitId(null);
+    }
+  };
+
   if (!authLoaded) {
     return (
       <SidebarProvider>
-        <div className="min-h-screen flex w-full bg-zinc-950 overflow-hidden">
+        <div className="h-screen flex w-full bg-zinc-950 overflow-hidden">
           <AppSidebar />
           <SidebarInset className="flex-1 overflow-hidden">
             <div className="flex-1 flex items-center justify-center">
@@ -366,11 +628,10 @@ export default function MotoDetailPage() {
     );
   }
 
-  // Not signed in
   if (!isSignedIn) {
     return (
       <SidebarProvider>
-        <div className="min-h-screen flex w-full bg-zinc-950 overflow-hidden">
+        <div className="h-screen flex w-full bg-zinc-950 overflow-hidden">
           <AppSidebar />
           <SidebarInset className="flex-1 overflow-hidden">
             <div className="flex-1 flex items-center justify-center">
@@ -378,9 +639,7 @@ export default function MotoDetailPage() {
                 <Bike className="h-16 w-16 mx-auto mb-4 text-purple-500" />
                 <h2 className="text-xl font-semibold text-white mb-4">Connexion requise</h2>
                 <SignInButton>
-                  <Button className="bg-purple-600 hover:bg-purple-500">
-                    Se connecter
-                  </Button>
+                  <Button className="bg-purple-600 hover:bg-purple-500">Se connecter</Button>
                 </SignInButton>
               </div>
             </div>
@@ -390,14 +649,13 @@ export default function MotoDetailPage() {
     );
   }
 
-  // Loading state - moto is undefined while query is in progress
-  if (moto === undefined) {
+  if (selectedMoto === undefined) {
     return (
       <SidebarProvider>
-        <div className="min-h-screen flex w-full bg-zinc-950 overflow-hidden">
+        <div className="h-screen flex w-full bg-zinc-950 overflow-hidden">
           <AppSidebar />
           <SidebarInset className="flex-1 overflow-hidden">
-            <div className="flex-1 flex items-center justify-center">
+            <div className="flex h-full items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
             </div>
           </SidebarInset>
@@ -406,23 +664,26 @@ export default function MotoDetailPage() {
     );
   }
 
-  // Not found state - moto is null
-  if (moto === null) {
+  if (!selectedMoto || !isOwner) {
     return (
       <SidebarProvider>
-        <div className="min-h-screen flex w-full bg-zinc-950 overflow-hidden">
+        <div className="h-screen flex w-full bg-zinc-950 overflow-hidden">
           <AppSidebar />
           <SidebarInset className="flex-1 overflow-hidden">
-            <div className="flex-1 flex flex-col items-center justify-center gap-4">
-              <Bike className="h-16 w-16 text-zinc-600" />
-              <h2 className="text-xl font-semibold text-white">Moto introuvable</h2>
-              <p className="text-zinc-500">Cette moto n&apos;existe pas ou a été supprimée.</p>
-              <Button
-                onClick={() => router.push("/motos")}
-                className="mt-4 bg-purple-600 hover:bg-purple-500"
-              >
-                Retour à mes motos
-              </Button>
+            <div className="flex h-full items-center justify-center px-4">
+              <div className="text-center max-w-md">
+                <Bike className="h-14 w-14 mx-auto mb-3 text-zinc-700" />
+                <p className="text-zinc-300 text-lg font-medium">Moto introuvable</p>
+                <p className="text-zinc-500 text-sm mt-1">
+                  Cette moto n&apos;existe pas ou ne t&apos;appartient pas.
+                </p>
+                <Button
+                  onClick={() => router.push("/motos")}
+                  className="mt-4 bg-purple-600 hover:bg-purple-500"
+                >
+                  Voir toutes les motos
+                </Button>
+              </div>
             </div>
           </SidebarInset>
         </div>
@@ -430,823 +691,953 @@ export default function MotoDetailPage() {
     );
   }
 
+  const detailTabs: { id: DetailTab; label: string; icon: React.ReactNode }[] = [
+    { id: "moto", label: "Moto", icon: <Bike className="h-4 w-4" /> },
+    { id: "kits", label: "Kits suspensions", icon: <Package className="h-4 w-4" /> },
+    { id: "configs", label: "Configs", icon: <ListChecks className="h-4 w-4" /> },
+  ];
+
   return (
     <SidebarProvider>
-      <div className="min-h-screen flex w-full bg-zinc-950 overflow-hidden">
+      <div className="h-screen flex w-full bg-zinc-950 overflow-hidden">
         <AppSidebar />
-        <SidebarInset className="flex-1 overflow-hidden">
-          <div className="flex-1 overflow-auto">
-            {/* Header */}
-            <div className="sticky top-0 z-10 bg-zinc-950/80 backdrop-blur-xl border-b border-zinc-800/50">
-              <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-                <div className="flex items-center gap-4">
+        <SidebarInset className="flex-1 overflow-hidden bg-zinc-950">
+          <div className="flex h-full flex-col">
+            <div className="shrink-0 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur px-4 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <Button
-                    variant="ghost"
                     size="icon"
+                    variant="ghost"
                     onClick={() => router.push("/motos")}
-                    className="text-zinc-400 hover:text-white"
+                    className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-800"
                   >
-                    <ArrowLeft className="h-5 w-5" />
+                    <ArrowLeft className="h-4 w-4" />
                   </Button>
-                  <div className="flex items-center gap-3">
-                    <BrandLogo brand={moto.brand} size="lg" />
-                    <div>
-                      <h1 className="text-xl font-bold text-white">
-                        {moto.brand} {moto.model}
-                      </h1>
-                      <p className="text-sm text-zinc-500">{moto.year}</p>
+
+                  <BrandLogo brand={selectedMoto.brand} size="md" />
+
+                  <div className="min-w-0">
+                    <h1 className="text-2xl font-bold text-white truncate">
+                      {selectedMoto.brand} {selectedMoto.model} {selectedMoto.year}
+                    </h1>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+                      <Badge
+                        variant="outline"
+                        className="border-zinc-700 bg-zinc-900 text-zinc-300"
+                      >
+                        {selectedMoto.isStockSuspension ? "Stock / OEM" : "Aftermarket"}
+                      </Badge>
+                      <span>
+                        {(selectedMoto.forkBrand || stockSuspension?.forkBrand || "Fourche ?")} ·{" "}
+                        {(selectedMoto.shockBrand || stockSuspension?.shockBrand || "Amortisseur ?")}
+                      </span>
                     </div>
                   </div>
                 </div>
-                
-                {isOwner && (
-                  <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleTogglePublic}
-                        className={`p-2 rounded-lg transition-colors ${
-                          moto.isPublic 
-                            ? "bg-emerald-500/20 text-emerald-400" 
-                            : "bg-zinc-800 text-zinc-400"
-                        }`}
-                        title={moto.isPublic ? "Moto publique" : "Moto privée"}
-                      >
-                        {moto.isPublic ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                      </button>
-                      {!isEditing ? (
-                        <Button
-                          variant="outline"
-                          onClick={startEditing}
-                          className="gap-2 bg-zinc-800 border-zinc-700 hover:bg-zinc-700"
-                        >
-                          <Edit3 className="h-4 w-4" />
-                          Modifier
-                        </Button>
-                      ) : (
-                        <>
-                          <Button
-                            variant="outline"
-                            onClick={cancelEditing}
-                            className="gap-2 bg-zinc-800 border-zinc-700 hover:bg-zinc-700"
-                          >
-                            <X className="h-4 w-4" />
-                            Annuler
-                          </Button>
-                          <Button
-                            onClick={saveChanges}
-                            disabled={isSaving}
-                            className="gap-2 bg-purple-600 hover:bg-purple-500"
-                          >
-                            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                            Sauvegarder
-                          </Button>
-                        </>
-                      )}
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => router.push("/motos")}
+                    className="h-8 border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+                  >
+                    Voir toutes les motos
+                  </Button>
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
                       <Button
-                        variant="ghost"
                         size="icon"
-                        onClick={handleDeleteMoto}
-                        className="text-zinc-500 hover:text-red-400"
+                        variant="ghost"
+                        className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-800"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <MoreHorizontal className="h-4 w-4" />
                       </Button>
-                    </div>
-                  )}
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="bg-zinc-900 border-zinc-800">
+                      <DropdownMenuItem
+                        onClick={() => setActiveTab("moto")}
+                        className="text-zinc-300 text-xs"
+                      >
+                        <Edit3 className="h-3 w-3 mr-2" />
+                        Modifier
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator className="bg-zinc-800" />
+                      <DropdownMenuItem
+                        onClick={handleDeleteMoto}
+                        className="text-red-400 text-xs"
+                      >
+                        <Trash2 className="h-3 w-3 mr-2" />
+                        Supprimer
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
 
-              {/* Content */}
-              <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
-                {/* Mode édition de la moto */}
-                {isEditing && (
-                  <Card className="bg-zinc-900/50 border-zinc-800">
-                    <CardHeader>
-                      <CardTitle className="text-lg text-white">Modifier la moto</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                          <Label className="text-zinc-400">Marque</Label>
-                          <select
-                            value={editedMoto.brand}
-                            onChange={(e) => setEditedMoto({ ...editedMoto, brand: e.target.value, model: "" })}
-                            className="w-full h-10 bg-zinc-800 border border-zinc-700 rounded-md px-3 text-white"
-                          >
-                            {BRANDS.map((b) => (
-                              <option key={b} value={b}>{b}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-zinc-400">Modèle</Label>
-                          <select
-                            value={editedMoto.model}
-                            onChange={(e) => setEditedMoto({ ...editedMoto, model: e.target.value })}
-                            className="w-full h-10 bg-zinc-800 border border-zinc-700 rounded-md px-3 text-white"
-                          >
-                            <option value="">Sélectionner</option>
-                            {availableModels.map((m) => (
-                              <option key={m} value={m}>{m}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-zinc-400">Année</Label>
-                          <select
-                            value={editedMoto.year}
-                            onChange={(e) => setEditedMoto({ ...editedMoto, year: parseInt(e.target.value) })}
-                            className="w-full h-10 bg-zinc-800 border border-zinc-700 rounded-md px-3 text-white"
-                          >
-                            {availableYears.map((y) => (
-                              <option key={y} value={y}>{y}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
+              <div className="mt-3 grid gap-2 md:grid-cols-3">
+                {detailTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`h-11 rounded-xl border text-xs font-medium transition-all flex items-center justify-center gap-1.5 ${
+                      activeTab === tab.id
+                        ? "bg-gradient-to-r from-zinc-800 to-zinc-900 border-zinc-700 text-white"
+                        : "bg-black border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700"
+                    }`}
+                  >
+                    {tab.icon}
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-                {/* Informations générales */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Suspensions d'origine */}
-                  <Card className="bg-zinc-900/50 border-zinc-800">
-                    <CardHeader>
-                      <CardTitle className="text-lg text-white flex items-center gap-2">
-                        <Package className="h-5 w-5 text-purple-500" />
-                        Suspensions d&apos;origine
-                      </CardTitle>
-                      <CardDescription>
-                        Équipement de série pour {moto.brand}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      {stockSuspension ? (
-                        <>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="p-4 bg-zinc-800/50 rounded-lg">
-                              <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Fourche</p>
-                              <p className="text-white font-medium">{stockSuspension.forkBrand}</p>
-                              <p className="text-sm text-zinc-400">{stockSuspension.forkModel}</p>
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <div className="p-4">
+                <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 md:p-4">
+                  {activeTab === "moto" && (
+                    <div className="grid gap-4 lg:grid-cols-[1.1fr_2fr]">
+                      <div className="space-y-3">
+                        <div className="aspect-[4/3] rounded-xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+                          {selectedMotoImageUrls.length > 0 ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={selectedMotoImageUrls[selectedImageIndex] || selectedMotoImageUrls[0]}
+                              alt={`${selectedMoto.brand} ${selectedMoto.model}`}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="h-full w-full flex flex-col items-center justify-center gap-2 text-zinc-500">
+                              <Bike className="h-12 w-12 text-zinc-700" />
+                              <span className="text-sm">Ajoute une photo de ta moto</span>
                             </div>
-                            <div className="p-4 bg-zinc-800/50 rounded-lg">
-                              <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Amortisseur</p>
-                              <p className="text-white font-medium">{stockSuspension.shockBrand}</p>
-                              <p className="text-sm text-zinc-400">{stockSuspension.shockModel}</p>
+                          )}
+                        </div>
+
+                        <input
+                          ref={motoImageInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleUploadMotoImage}
+                          className="hidden"
+                        />
+                        <div className="flex items-center justify-between gap-2">
+                          <Button
+                            type="button"
+                            onClick={() => motoImageInputRef.current?.click()}
+                            disabled={isUploadingMotoImage}
+                            className="bg-purple-600 hover:bg-purple-500 h-8 px-3 text-xs"
+                          >
+                            {isUploadingMotoImage ? (
+                              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                            ) : (
+                              <ImagePlus className="h-3.5 w-3.5 mr-1.5" />
+                            )}
+                            Ajouter des photos
+                          </Button>
+                          <span className="text-xs text-zinc-500">
+                            {selectedMotoImageItems.length} photo
+                            {selectedMotoImageItems.length > 1 ? "s" : ""}
+                          </span>
+                        </div>
+
+                        {selectedMotoImageItems.length > 0 && (
+                          <div className="grid grid-cols-4 gap-2">
+                            {selectedMotoImageItems.map((image, index) => (
+                              <div
+                                key={image.id}
+                                className={`relative rounded-lg border overflow-hidden ${
+                                  selectedImageIndex === index
+                                    ? "border-purple-500"
+                                    : "border-zinc-800 hover:border-zinc-700"
+                                }`}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedImageIndex(index)}
+                                  className="block aspect-video w-full"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={image.url}
+                                    alt={`Photo ${index + 1}`}
+                                    className="h-full w-full object-cover"
+                                  />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleRemoveMotoImage(image.id);
+                                  }}
+                                  disabled={removingMotoImageId === image.id}
+                                  className="absolute top-1 right-1 h-6 w-6 rounded-full bg-black/60 border border-zinc-700 flex items-center justify-center text-zinc-300 hover:text-red-400 disabled:opacity-50"
+                                >
+                                  {removingMotoImageId === image.id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-3 w-3" />
+                                  )}
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="rounded-xl border border-zinc-800 bg-black/60 p-4">
+                          <h3 className="text-lg font-semibold text-white flex items-center gap-2 mb-3">
+                            <Info className="h-4 w-4 text-zinc-300" />
+                            Infos
+                          </h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <p className="text-zinc-500">Marque</p>
+                              <p className="text-white font-medium">{selectedMoto.brand}</p>
+                            </div>
+                            <div>
+                              <p className="text-zinc-500">Modèle</p>
+                              <p className="text-white font-medium">{selectedMoto.model}</p>
+                            </div>
+                            <div>
+                              <p className="text-zinc-500">Année</p>
+                              <p className="text-white font-medium">{selectedMoto.year}</p>
+                            </div>
+                            <div>
+                              <p className="text-zinc-500">Nombre de kits</p>
+                              <p className="text-white font-medium">{sortedKits.length}</p>
                             </div>
                           </div>
-                          {stockSuspension.notes && (
-                            <p className="text-xs text-zinc-500 italic">{stockSuspension.notes}</p>
-                          )}
-                        </>
-                      ) : (
-                        <p className="text-zinc-500 text-sm">Informations non disponibles</p>
-                      )}
-                    </CardContent>
-                  </Card>
 
-                  {/* Stats rapides */}
-                  <Card className="bg-zinc-900/50 border-zinc-800">
-                    <CardHeader>
-                      <CardTitle className="text-lg text-white flex items-center gap-2">
-                        <Settings2 className="h-5 w-5 text-amber-500" />
-                        Résumé
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="p-4 bg-zinc-800/50 rounded-lg text-center">
-                          <p className="text-3xl font-bold text-purple-400">{moto.kits?.length || 0}</p>
-                          <p className="text-sm text-zinc-500">Kit{(moto.kits?.length || 0) > 1 ? 's' : ''} configuré{(moto.kits?.length || 0) > 1 ? 's' : ''}</p>
+                          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
+                              <p className="text-xs uppercase text-zinc-500 mb-1">Fourche</p>
+                              <p className="text-white font-medium">
+                                {selectedMoto.forkBrand || stockSuspension?.forkBrand || "Non spécifié"}
+                              </p>
+                              <p className="text-zinc-500 text-xs">
+                                {selectedMoto.forkModel ||
+                                  stockSuspension?.forkModel ||
+                                  "Modèle non renseigné"}
+                              </p>
+                            </div>
+                            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
+                              <p className="text-xs uppercase text-zinc-500 mb-1">Amortisseur</p>
+                              <p className="text-white font-medium">
+                                {selectedMoto.shockBrand ||
+                                  stockSuspension?.shockBrand ||
+                                  "Non spécifié"}
+                              </p>
+                              <p className="text-zinc-500 text-xs">
+                                {selectedMoto.shockModel ||
+                                  stockSuspension?.shockModel ||
+                                  "Modèle non renseigné"}
+                              </p>
+                            </div>
+                          </div>
                         </div>
-                        <div className="p-4 bg-zinc-800/50 rounded-lg text-center">
-                          <p className="text-3xl font-bold text-emerald-400">
-                            <Calendar className="h-8 w-8 mx-auto" />
-                          </p>
-                          <p className="text-sm text-zinc-500">{moto.year}</p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
 
-                {/* Section Photos */}
-                <Card className="bg-zinc-900/50 border-zinc-800">
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle className="text-lg text-white flex items-center gap-2">
-                          <ImageIcon className="h-5 w-5 text-blue-500" />
-                          Photos
-                        </CardTitle>
-                        <CardDescription>
-                          {moto.images?.length || 0} photo{(moto.images?.length || 0) > 1 ? 's' : ''} de votre moto
-                        </CardDescription>
-                      </div>
-                      {isOwner && (
-                        <div>
-                          <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept="image/*"
-                            onChange={handleImageUpload}
-                            className="hidden"
-                            id="image-upload"
-                          />
-                          <Button
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={isUploadingImage}
-                            className="gap-2 bg-blue-600 hover:bg-blue-500"
-                          >
-                            {isUploadingImage ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Upload className="h-4 w-4" />
-                            )}
-                            Ajouter une photo
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    {imageUrls && imageUrls.length > 0 ? (
-                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                        {imageUrls.map((img: { id: Id<"_storage">; url: string | null }) => (
-                          img.url && (
-                            <div 
-                              key={img.id} 
-                              className="relative group aspect-square rounded-lg overflow-hidden bg-zinc-800 cursor-pointer"
-                              onClick={() => setSelectedImage(img.url)}
-                            >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={img.url}
-                                alt="Photo de la moto"
-                                className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                              />
-                              {isOwner && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteImage(img.id);
-                                  }}
-                                  className="absolute top-2 right-2 p-1.5 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500"
+                        <div className="rounded-xl border border-zinc-800 bg-black/60 p-4">
+                          <h3 className="text-lg font-semibold text-white mb-3">Kit actif</h3>
+                          {activeKit ? (
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
+                                  <span className="font-medium text-white">{activeKit.name}</span>
+                                </div>
+                                <Badge className="bg-emerald-500/20 border border-emerald-500/30 text-emerald-400">
+                                  Kit actif
+                                </Badge>
+                              </div>
+                              <div className="grid grid-cols-5 gap-2 text-center text-xs">
+                                <div className="rounded-md bg-zinc-900/70 p-1.5">
+                                  <p className="text-zinc-500">F.C</p>
+                                  <p className="text-white font-semibold">
+                                    {activeKit.forkCompression ?? activeKit.baseForkCompression ?? "-"}
+                                  </p>
+                                </div>
+                                <div className="rounded-md bg-zinc-900/70 p-1.5">
+                                  <p className="text-zinc-500">F.D</p>
+                                  <p className="text-white font-semibold">
+                                    {activeKit.forkRebound ?? activeKit.baseForkRebound ?? "-"}
+                                  </p>
+                                </div>
+                                <div className="rounded-md bg-zinc-900/70 p-1.5">
+                                  <p className="text-zinc-500">BV</p>
+                                  <p className="text-white font-semibold">
+                                    {activeKit.shockCompressionLow ??
+                                      activeKit.baseShockCompressionLow ??
+                                      "-"}
+                                  </p>
+                                </div>
+                                <div className="rounded-md bg-zinc-900/70 p-1.5">
+                                  <p className="text-zinc-500">HV</p>
+                                  <p className="text-white font-semibold">
+                                    {activeKit.shockCompressionHigh ??
+                                      activeKit.baseShockCompressionHigh ??
+                                      "-"}
+                                  </p>
+                                </div>
+                                <div className="rounded-md bg-zinc-900/70 p-1.5">
+                                  <p className="text-zinc-500">S.D</p>
+                                  <p className="text-white font-semibold">
+                                    {activeKit.shockRebound ?? activeKit.baseShockRebound ?? "-"}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  onClick={() => setActiveTab("kits")}
+                                  className="flex-1 bg-purple-600 hover:bg-purple-500 h-9 text-sm"
                                 >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
-                              )}
-                            </div>
-                          )
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-12 text-zinc-500">
-                        <ImageIcon className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                        <p>Aucune photo ajoutée</p>
-                        {isOwner && (
-                          <p className="text-sm mt-2">Ajoutez des photos de votre moto</p>
-                        )}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Section Kits */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-xl font-bold text-white">Config</h2>
-                      <p className="text-sm text-zinc-500">Gérez vos différentes configurations</p>
-                    </div>
-                    {isOwner && (
-                      <Button
-                        onClick={() => openKitDialog()}
-                        className="gap-2 bg-purple-600 hover:bg-purple-500"
-                      >
-                        <Plus className="h-4 w-4" />
-                        Ajouter un kit
-                      </Button>
-                    )}
-                  </div>
-
-                  {moto.kits && moto.kits.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {moto.kits.map((kit) => (
-                        <Card 
-                          key={kit._id}
-                          className={`bg-zinc-900/50 border transition-colors ${
-                            kit.isDefault 
-                              ? "border-purple-500/50 bg-purple-500/5" 
-                              : "border-zinc-800 hover:border-zinc-700"
-                          }`}
-                        >
-                          <CardHeader className="pb-3">
-                            <div className="flex items-start justify-between">
-                              <div className="flex items-center gap-2">
-                                <div className={`p-2 rounded-lg ${kit.isDefault ? "bg-purple-500/20" : "bg-zinc-800"}`}>
-                                  <Settings2 className={`h-4 w-4 ${kit.isDefault ? "text-purple-400" : "text-zinc-400"}`} />
-                                </div>
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <CardTitle className="text-base text-white">{kit.name}</CardTitle>
-                                    {kit.isDefault && (
-                                      <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
-                                    )}
-                                  </div>
-                                  {kit.description && (
-                                    <CardDescription className="text-xs">{kit.description}</CardDescription>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </CardHeader>
-                          <CardContent className="space-y-3">
-                            {/* Badges */}
-                            <div className="flex flex-wrap gap-1.5">
-                              {kit.isStockSuspension ? (
-                                <span className="text-[10px] bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded">
-                                  OEM
-                                </span>
-                              ) : (
-                                <span className="text-[10px] bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded flex items-center gap-1">
-                                  <Wrench className="h-3 w-3" />
-                                  Modifié
-                                </span>
-                              )}
-                              {kit.terrainType && (
-                                <span className="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded flex items-center gap-1">
-                                  <MapPin className="h-3 w-3" />
-                                  {kit.terrainType}
-                                </span>
-                              )}
-                              {kit.sportType && (
-                                <span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">
-                                  {kit.sportType}
-                                </span>
-                              )}
-                              {kit.country && (
-                                <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded">
-                                  {kit.country}
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Suspensions info */}
-                            {kit.isStockSuspension && stockSuspension ? (
-                              <div className="p-3 bg-purple-500/10 rounded-lg text-xs">
-                                <p className="text-purple-400 font-medium mb-1">Suspensions d&apos;origine</p>
-                                <div className="grid grid-cols-2 gap-2 text-zinc-400">
-                                  <div>
-                                    <span className="text-zinc-500">Fourche:</span> {stockSuspension.forkBrand} {stockSuspension.forkModel}
-                                  </div>
-                                  <div>
-                                    <span className="text-zinc-500">Amortisseur:</span> {stockSuspension.shockBrand} {stockSuspension.shockModel}
-                                  </div>
-                                </div>
-                              </div>
-                            ) : !kit.isStockSuspension && (kit.forkBrand || kit.shockBrand) ? (
-                              <div className="p-3 bg-amber-500/10 rounded-lg text-xs">
-                                <p className="text-amber-400 font-medium mb-1">Suspensions modifiées</p>
-                                <div className="grid grid-cols-2 gap-2 text-zinc-400">
-                                  {kit.forkBrand && (
-                                    <div>
-                                      <span className="text-zinc-500">Fourche:</span> {kit.forkBrand} {kit.forkModel}
-                                    </div>
-                                  )}
-                                  {kit.shockBrand && (
-                                    <div>
-                                      <span className="text-zinc-500">Amortisseur:</span> {kit.shockBrand} {kit.shockModel}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            ) : null}
-
-                            {/* Détails techniques */}
-                            {(kit.forkSpringRate || kit.shockSpringRate || kit.forkOilWeight) && (
-                              <div className="text-xs text-zinc-500 space-y-1">
-                                {kit.forkSpringRate && <p>Ressort AV: {kit.forkSpringRate}</p>}
-                                {kit.shockSpringRate && <p>Ressort AR: {kit.shockSpringRate}</p>}
-                                {kit.forkOilWeight && <p>Huile: {kit.forkOilWeight}</p>}
-                              </div>
-                            )}
-
-                            {/* Actions */}
-                            {isOwner && (
-                              <div className="flex items-center gap-2 pt-2 border-t border-zinc-800">
-                                {/* Bouton Clickers MX */}
+                                  Voir les kits
+                                </Button>
                                 <Button
                                   variant="outline"
-                                  size="sm"
-                                  onClick={() => setClickersKitId(kit._id)}
-                                  className="text-purple-400 border-purple-500/30 hover:bg-purple-500/10 h-8 px-2 gap-1"
+                                  onClick={() => setActiveTab("configs")}
+                                  className="flex-1 border-zinc-700 hover:bg-zinc-800 h-9 text-sm"
                                 >
-                                  <Sliders className="h-3 w-3" />
-                                  Clickers
-                                </Button>
-                                {!kit.isDefault && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleSetDefaultKit(kit._id)}
-                                    className="text-zinc-400 hover:text-yellow-400 h-8 px-2 gap-1"
-                                  >
-                                    <Star className="h-3 w-3" />
-                                    Défaut
-                                  </Button>
-                                )}
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => openKitDialog(kit._id)}
-                                  className="text-zinc-400 hover:text-purple-400 h-8 px-2 gap-1"
-                                >
-                                  <Edit3 className="h-3 w-3" />
-                                  Modifier
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleDeleteKit(kit._id)}
-                                  className="text-zinc-500 hover:text-red-400 h-8 px-2 gap-1 ml-auto"
-                                >
-                                  <Trash2 className="h-3 w-3" />
+                                  Voir les configs
                                 </Button>
                               </div>
-                            )}
-
-                            {/* Config actuelle et configs sauvegardées */}
-                            <KitConfigSection
-                              kitId={kit._id}
-                              kitName={kit.name}
-                              currentSettings={{
-                                forkCompression: kit.forkCompression,
-                                forkRebound: kit.forkRebound,
-                                shockCompressionLow: kit.shockCompressionLow,
-                                shockCompressionHigh: kit.shockCompressionHigh,
-                                shockRebound: kit.shockRebound,
-                              }}
-                              isOwner={isOwner}
-                            />
-                          </CardContent>
-                        </Card>
-                      ))}
+                            </div>
+                          ) : (
+                            <p className="text-zinc-500">Aucun kit configuré.</p>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  ) : (
-                    <Card className="bg-zinc-900/50 border-zinc-800">
-                      <CardContent className="py-12 text-center">
-                        <Package className="h-12 w-12 mx-auto mb-4 text-zinc-600" />
-                        <p className="text-zinc-500 mb-4">Aucun kit configuré pour cette moto</p>
-                        {isOwner && (
-                          <Button
-                            onClick={() => openKitDialog()}
-                            className="gap-2 bg-purple-600 hover:bg-purple-500"
-                          >
-                            <Plus className="h-4 w-4" />
-                            Créer votre premier kit
-                          </Button>
-                        )}
-                      </CardContent>
-                    </Card>
+                  )}
+
+                  {activeTab === "kits" && (
+                    <div className="space-y-4">
+                      <Button
+                        onClick={handleOpenKitDialog}
+                        className="w-full bg-purple-600 hover:bg-purple-500 font-semibold h-9 text-sm"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Nouveau kit
+                      </Button>
+
+                      {sortedKits.length === 0 ? (
+                        <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
+                          <Package className="h-12 w-12 mx-auto mb-3 text-zinc-700" />
+                          <p className="text-zinc-400 mb-1">Aucun kit configuré</p>
+                          <p className="text-zinc-500 text-sm">
+                            Crée ton premier kit de suspension.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid gap-3 xl:grid-cols-2">
+                          {sortedKits.map((kit) => {
+                            const draft = kitDrafts[kit._id] || createKitDraft(kit);
+                            const defaultForkBrand =
+                              draft.forkBrand || stockSuspension?.forkBrand || "";
+                            const defaultForkModel =
+                              draft.forkModel || stockSuspension?.forkModel || "";
+                            const defaultShockBrand =
+                              draft.shockBrand || stockSuspension?.shockBrand || "";
+                            const defaultShockModel =
+                              draft.shockModel || stockSuspension?.shockModel || "";
+
+                            return (
+                              <div
+                                key={kit._id}
+                                className={`rounded-xl border p-3 ${
+                                  kit.isDefault
+                                    ? "border-purple-500/40 bg-purple-500/8"
+                                    : "border-zinc-800 bg-black/50"
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-3 mb-3">
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
+                                      <Input
+                                        value={draft.name}
+                                        onChange={(e) =>
+                                          handleKitDraftChange(kit._id, { name: e.target.value })
+                                        }
+                                        className="h-8 bg-zinc-900 border-zinc-700 text-white text-sm font-semibold"
+                                      />
+                                    </div>
+                                    <div className="mt-2 flex items-center gap-2">
+                                      {kit.isDefault ? (
+                                        <Badge className="bg-emerald-500/20 border border-emerald-500/30 text-emerald-400">
+                                          Kit actif
+                                        </Badge>
+                                      ) : (
+                                        <Badge variant="outline" className="border-zinc-700 text-zinc-500">
+                                          Inactif
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-1">
+                                    {!kit.isDefault && (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => handleSetDefaultKit(kit._id)}
+                                        className="text-zinc-400 hover:text-emerald-400"
+                                      >
+                                        <Check className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-8 w-8 p-0 text-zinc-400"
+                                        >
+                                          <MoreHorizontal className="h-4 w-4" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end" className="bg-zinc-900 border-zinc-800">
+                                        <DropdownMenuItem
+                                          onClick={() => openRenameDialog(kit._id, kit.name)}
+                                          className="text-zinc-300 text-xs"
+                                        >
+                                          <Edit3 className="h-3 w-3 mr-2" />
+                                          Renommer
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          onClick={() => handleDuplicateKit(kit._id)}
+                                          className="text-zinc-300 text-xs"
+                                        >
+                                          <Copy className="h-3 w-3 mr-2" />
+                                          Dupliquer
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator className="bg-zinc-800" />
+                                        <DropdownMenuItem
+                                          onClick={() => handleDeleteKit(kit._id)}
+                                          className="text-red-400 text-xs"
+                                        >
+                                          <Trash2 className="h-3 w-3 mr-2" />
+                                          Supprimer
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                  <Input
+                                    value={draft.description}
+                                    onChange={(e) =>
+                                      handleKitDraftChange(kit._id, { description: e.target.value })
+                                    }
+                                    placeholder="Description"
+                                    className="h-8 bg-zinc-900 border-zinc-700 text-sm"
+                                  />
+
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <select
+                                      value={draft.sportType}
+                                      onChange={(e) =>
+                                        handleKitDraftChange(kit._id, { sportType: e.target.value })
+                                      }
+                                      className="h-8 rounded-md border border-zinc-700 bg-zinc-900 px-2 text-sm text-white"
+                                    >
+                                      <option value="">Type de sport</option>
+                                      {SPORT_TYPES.map((sport) => (
+                                        <option key={sport.value} value={sport.value}>
+                                          {sport.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <select
+                                      value={draft.terrainType}
+                                      onChange={(e) =>
+                                        handleKitDraftChange(kit._id, { terrainType: e.target.value })
+                                      }
+                                      className="h-8 rounded-md border border-zinc-700 bg-zinc-900 px-2 text-sm text-white"
+                                    >
+                                      <option value="">Type de terrain</option>
+                                      {TERRAIN_TYPES.map((terrain) => (
+                                        <option key={terrain.value} value={terrain.value}>
+                                          {terrain.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 space-y-2">
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <Input
+                                        value={defaultForkBrand}
+                                        onChange={(e) =>
+                                          handleKitDraftChange(kit._id, { forkBrand: e.target.value })
+                                        }
+                                        placeholder="Fourche — Marque"
+                                        className="h-8 bg-zinc-900 border-zinc-700 text-sm"
+                                      />
+                                      <Input
+                                        value={defaultShockBrand}
+                                        onChange={(e) =>
+                                          handleKitDraftChange(kit._id, { shockBrand: e.target.value })
+                                        }
+                                        placeholder="Amortisseur — Marque"
+                                        className="h-8 bg-zinc-900 border-zinc-700 text-sm"
+                                      />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <Input
+                                        value={defaultForkModel}
+                                        onChange={(e) =>
+                                          handleKitDraftChange(kit._id, { forkModel: e.target.value })
+                                        }
+                                        placeholder="Fourche — Modèle"
+                                        className="h-8 bg-zinc-900 border-zinc-700 text-sm"
+                                      />
+                                      <Input
+                                        value={defaultShockModel}
+                                        onChange={(e) =>
+                                          handleKitDraftChange(kit._id, { shockModel: e.target.value })
+                                        }
+                                        placeholder="Amortisseur — Modèle"
+                                        className="h-8 bg-zinc-900 border-zinc-700 text-sm"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <label className="flex items-center gap-2 text-xs text-zinc-400">
+                                    <input
+                                      type="checkbox"
+                                      checked={!draft.isStockSuspension}
+                                      onChange={(e) => {
+                                        const aftermarket = e.target.checked;
+                                        handleKitDraftChange(kit._id, {
+                                          isStockSuspension: !aftermarket,
+                                          ...(aftermarket
+                                            ? {}
+                                            : {
+                                                forkBrand: stockSuspension?.forkBrand || "",
+                                                forkModel: stockSuspension?.forkModel || "",
+                                                shockBrand: stockSuspension?.shockBrand || "",
+                                                shockModel: stockSuspension?.shockModel || "",
+                                              }),
+                                        });
+                                      }}
+                                      className="h-3.5 w-3.5 rounded border-zinc-600 bg-zinc-900"
+                                    />
+                                    Suspension modifiée (aftermarket)
+                                  </label>
+
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <Input
+                                      value={draft.forkSpringRate}
+                                      onChange={(e) =>
+                                        handleKitDraftChange(kit._id, {
+                                          forkSpringRate: e.target.value,
+                                        })
+                                      }
+                                      placeholder="Ressort fourche"
+                                      className="h-8 bg-zinc-900 border-zinc-700 text-sm"
+                                    />
+                                    <Input
+                                      value={draft.shockSpringRate}
+                                      onChange={(e) =>
+                                        handleKitDraftChange(kit._id, {
+                                          shockSpringRate: e.target.value,
+                                        })
+                                      }
+                                      placeholder="Ressort amortisseur"
+                                      className="h-8 bg-zinc-900 border-zinc-700 text-sm"
+                                    />
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <Input
+                                      value={draft.forkOilWeight}
+                                      onChange={(e) =>
+                                        handleKitDraftChange(kit._id, { forkOilWeight: e.target.value })
+                                      }
+                                      placeholder="Huile fourche"
+                                      className="h-8 bg-zinc-900 border-zinc-700 text-sm"
+                                    />
+                                    <Input
+                                      value={draft.forkOilLevel}
+                                      onChange={(e) =>
+                                        handleKitDraftChange(kit._id, { forkOilLevel: e.target.value })
+                                      }
+                                      placeholder="Niveau huile"
+                                      className="h-8 bg-zinc-900 border-zinc-700 text-sm"
+                                    />
+                                  </div>
+
+                                  <Input
+                                    value={draft.valvingNotes}
+                                    onChange={(e) =>
+                                      handleKitDraftChange(kit._id, { valvingNotes: e.target.value })
+                                    }
+                                    placeholder="Notes valving"
+                                    className="h-8 bg-zinc-900 border-zinc-700 text-sm"
+                                  />
+                                  <Input
+                                    value={draft.otherMods}
+                                    onChange={(e) =>
+                                      handleKitDraftChange(kit._id, { otherMods: e.target.value })
+                                    }
+                                    placeholder="Autres modifications"
+                                    className="h-8 bg-zinc-900 border-zinc-700 text-sm"
+                                  />
+
+                                  <Button
+                                    onClick={() => handleSaveInlineKit(kit._id)}
+                                    disabled={savingKitId === kit._id}
+                                    className="w-full bg-purple-600 hover:bg-purple-500 h-8"
+                                  >
+                                    {savingKitId === kit._id ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" />
+                                    ) : (
+                                      <Check className="h-3.5 w-3.5 mr-2" />
+                                    )}
+                                    Sauvegardé
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab === "configs" && (
+                    <div className="space-y-4">
+                      <Button
+                        onClick={() => setIsConfigChoiceDialogOpen(true)}
+                        className="w-full bg-purple-600 hover:bg-purple-500 font-semibold h-9 text-sm"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Nouvelle config
+                      </Button>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <select
+                          value={selectedKitId || ""}
+                          onChange={(e) =>
+                            setSelectedKitId(
+                              e.target.value ? (e.target.value as Id<"suspensionKits">) : null
+                            )
+                          }
+                          className="h-9 rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-xs sm:text-sm text-white"
+                        >
+                          <option value="">Kits suspensions</option>
+                          {sortedKits.map((kit) => (
+                            <option key={kit._id} value={kit._id}>
+                              {kit.name}
+                            </option>
+                          ))}
+                        </select>
+
+                        <select
+                          value={configSortOrder}
+                          onChange={(e) =>
+                            setConfigSortOrder(e.target.value as ConfigSortOrder)
+                          }
+                          className="h-9 rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-xs sm:text-sm text-white"
+                        >
+                          <option value="recent">Date (plus récent)</option>
+                          <option value="oldest">Date (plus ancien)</option>
+                        </select>
+                      </div>
+
+                      {selectedKitId ? (
+                        <KitConfigsList
+                          kitId={selectedKitId}
+                          selectedConfigId={selectedConfigId}
+                          onSelectConfig={setSelectedConfigId}
+                          onSetActiveConfig={handleSetActiveConfig}
+                          sortOrder={configSortOrder}
+                        />
+                      ) : (
+                        <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
+                          <ListChecks className="h-12 w-12 mx-auto mb-3 text-zinc-700" />
+                          <p className="text-zinc-400">
+                            Sélectionne un kit pour afficher ses configs.
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
             </div>
+          </div>
         </SidebarInset>
       </div>
 
-      {/* Dialog d'ajout/modification de kit */}
-      <Dialog open={isKitDialogOpen} onOpenChange={setIsKitDialogOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 max-w-2xl max-h-[90vh] overflow-y-auto">
+      <Dialog open={isConfigChoiceDialogOpen} onOpenChange={setIsConfigChoiceDialogOpen}>
+        <DialogContent className="bg-zinc-900 border-zinc-800 sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white">
-              {editingKitId ? "Modifier le kit" : "Nouveau kit de suspension"}
-            </DialogTitle>
-            <DialogDescription>
-              {editingKitId ? "Modifiez les détails de ce kit" : `Configuration pour votre ${moto.brand} ${moto.model}`}
+            <DialogTitle className="text-white">Nouvelle config</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Choisis la méthode de création de ta configuration de suspension.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-6">
-            {/* Nom et description */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-zinc-400">Nom du kit *</Label>
-                <Input
-                  value={newKit.name}
-                  onChange={(e) => setNewKit({ ...newKit, name: e.target.value })}
-                  placeholder="Ex: Sable mou, Enduro classique..."
-                  className="bg-zinc-800 border-zinc-700 text-white"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-zinc-400">Description</Label>
-                <Input
-                  value={newKit.description}
-                  onChange={(e) => setNewKit({ ...newKit, description: e.target.value })}
-                  placeholder="Description courte..."
-                  className="bg-zinc-800 border-zinc-700 text-white"
-                />
-              </div>
-            </div>
+          <div className="space-y-3 pt-2">
+            <Button
+              onClick={handleLaunchAssistedConfig}
+              disabled={isLaunchingAssistedConfig}
+              className="w-full justify-start h-11 bg-purple-600 hover:bg-purple-500"
+            >
+              {isLaunchingAssistedConfig ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4 mr-2" />
+              )}
+              Config assistée (IA)
+            </Button>
 
-            {/* Type de terrain et sport */}
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label className="text-zinc-400">Type de terrain</Label>
-                <select
-                  value={newKit.terrainType}
-                  onChange={(e) => setNewKit({ ...newKit, terrainType: e.target.value })}
-                  className="w-full h-10 bg-zinc-800 border border-zinc-700 rounded-md px-3 text-white"
-                >
-                  <option value="">Aucun</option>
-                  {TERRAIN_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-zinc-400">Discipline</Label>
-                <select
-                  value={newKit.sportType}
-                  onChange={(e) => setNewKit({ ...newKit, sportType: e.target.value })}
-                  className="w-full h-10 bg-zinc-800 border border-zinc-700 rounded-md px-3 text-white"
-                >
-                  <option value="">Aucun</option>
-                  {SPORT_TYPES.map((s) => (
-                    <option key={s.value} value={s.value}>{s.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-zinc-400">Pays</Label>
-                <Input
-                  value={newKit.country}
-                  onChange={(e) => setNewKit({ ...newKit, country: e.target.value })}
-                  placeholder="Ex: France..."
-                  className="bg-zinc-800 border-zinc-700 text-white"
-                />
-              </div>
-            </div>
-
-            <Separator className="bg-zinc-800" />
-
-            {/* Type de suspensions */}
-            <div className="space-y-3">
-              <Label className="text-zinc-400">Suspensions de ce kit</Label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setNewKit({ ...newKit, isStockSuspension: true })}
-                  className={`p-3 rounded-lg border-2 transition-all ${
-                    newKit.isStockSuspension
-                      ? "border-purple-500 bg-purple-500/10"
-                      : "border-zinc-700 bg-zinc-800/50"
-                  }`}
-                >
-                  <p className={`text-sm font-medium ${newKit.isStockSuspension ? "text-white" : "text-zinc-400"}`}>
-                    Origine
-                  </p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNewKit({ ...newKit, isStockSuspension: false })}
-                  className={`p-3 rounded-lg border-2 transition-all ${
-                    !newKit.isStockSuspension
-                      ? "border-amber-500 bg-amber-500/10"
-                      : "border-zinc-700 bg-zinc-800/50"
-                  }`}
-                >
-                  <p className={`text-sm font-medium ${!newKit.isStockSuspension ? "text-white" : "text-zinc-400"}`}>
-                    Modifiées
-                  </p>
-                </button>
-              </div>
-            </div>
-
-            {/* Affichage des suspensions d'origine si kit stock */}
-            {newKit.isStockSuspension && stockSuspension && (
-              <div className="space-y-3 p-4 bg-purple-500/5 border border-purple-500/20 rounded-lg">
-                <p className="text-sm text-purple-400 font-medium">
-                  Suspensions d&apos;origine {moto.brand}
-                </p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-zinc-500 mb-1">Fourche</p>
-                    <p className="text-sm text-white">{stockSuspension.forkBrand} {stockSuspension.forkModel}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-zinc-500 mb-1">Amortisseur</p>
-                    <p className="text-sm text-white">{stockSuspension.shockBrand} {stockSuspension.shockModel}</p>
-                  </div>
-                </div>
-                {stockSuspension.notes && (
-                  <p className="text-xs text-zinc-500 italic">{stockSuspension.notes}</p>
-                )}
-              </div>
-            )}
-
-            {/* Détails techniques si modifiées */}
-            {!newKit.isStockSuspension && (
-              <div className="space-y-4 p-4 bg-amber-500/5 border border-amber-500/20 rounded-lg">
-                <p className="text-sm text-amber-400 font-medium flex items-center gap-2">
-                  <Wrench className="h-4 w-4" />
-                  Modifications du kit
-                </p>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-xs text-zinc-500">Marque fourche</Label>
-                    <Input
-                      value={newKit.forkBrand}
-                      onChange={(e) => setNewKit({ ...newKit, forkBrand: e.target.value })}
-                      placeholder="Ex: WP, Öhlins..."
-                      className="bg-zinc-800 border-zinc-700 text-white h-9"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs text-zinc-500">Modèle fourche</Label>
-                    <Input
-                      value={newKit.forkModel}
-                      onChange={(e) => setNewKit({ ...newKit, forkModel: e.target.value })}
-                      placeholder="Ex: XACT Pro..."
-                      className="bg-zinc-800 border-zinc-700 text-white h-9"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-xs text-zinc-500">Marque amortisseur</Label>
-                    <Input
-                      value={newKit.shockBrand}
-                      onChange={(e) => setNewKit({ ...newKit, shockBrand: e.target.value })}
-                      placeholder="Ex: WP, Öhlins..."
-                      className="bg-zinc-800 border-zinc-700 text-white h-9"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs text-zinc-500">Modèle amortisseur</Label>
-                    <Input
-                      value={newKit.shockModel}
-                      onChange={(e) => setNewKit({ ...newKit, shockModel: e.target.value })}
-                      placeholder="Ex: XACT Pro..."
-                      className="bg-zinc-800 border-zinc-700 text-white h-9"
-                    />
-                  </div>
-                </div>
-
-                <Separator className="bg-zinc-700" />
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-xs text-zinc-500">Ressort fourche</Label>
-                    <Input
-                      value={newKit.forkSpringRate}
-                      onChange={(e) => setNewKit({ ...newKit, forkSpringRate: e.target.value })}
-                      placeholder="Ex: 0.44 kg/mm"
-                      className="bg-zinc-800 border-zinc-700 text-white h-9"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs text-zinc-500">Ressort amortisseur</Label>
-                    <Input
-                      value={newKit.shockSpringRate}
-                      onChange={(e) => setNewKit({ ...newKit, shockSpringRate: e.target.value })}
-                      placeholder="Ex: 5.2 kg/mm"
-                      className="bg-zinc-800 border-zinc-700 text-white h-9"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-xs text-zinc-500">Huile fourche</Label>
-                    <Input
-                      value={newKit.forkOilWeight}
-                      onChange={(e) => setNewKit({ ...newKit, forkOilWeight: e.target.value })}
-                      placeholder="Ex: Motorex 5W"
-                      className="bg-zinc-800 border-zinc-700 text-white h-9"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs text-zinc-500">Niveau huile</Label>
-                    <Input
-                      value={newKit.forkOilLevel}
-                      onChange={(e) => setNewKit({ ...newKit, forkOilLevel: e.target.value })}
-                      placeholder="Ex: 380mm"
-                      className="bg-zinc-800 border-zinc-700 text-white h-9"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-xs text-zinc-500">Notes de valving</Label>
-                  <Input
-                    value={newKit.valvingNotes}
-                    onChange={(e) => setNewKit({ ...newKit, valvingNotes: e.target.value })}
-                    placeholder="Modifications internes..."
-                    className="bg-zinc-800 border-zinc-700 text-white h-9"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-xs text-zinc-500">Autres modifications</Label>
-                  <Input
-                    value={newKit.otherMods}
-                    onChange={(e) => setNewKit({ ...newKit, otherMods: e.target.value })}
-                    placeholder="Clapets, pistons..."
-                    className="bg-zinc-800 border-zinc-700 text-white h-9"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Boutons */}
-            <div className="flex justify-end gap-3 pt-4">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsKitDialogOpen(false);
-                  resetKitForm();
-                }}
-                className="bg-zinc-800 border-zinc-700 hover:bg-zinc-700"
-              >
-                Annuler
-              </Button>
-              <Button
-                onClick={handleSaveKit}
-                disabled={!newKit.name || isLoading}
-                className="bg-purple-600 hover:bg-purple-500 gap-2"
-              >
-                {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-                {editingKitId ? "Sauvegarder" : "Créer le kit"}
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              onClick={handleLaunchManualConfig}
+              className="w-full justify-start h-11 border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-800"
+            >
+              <Wrench className="h-4 w-4 mr-2" />
+              Config manuelle
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Image Lightbox Dialog */}
-      <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 max-w-4xl p-2">
-          {selectedImage && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={selectedImage}
-              alt="Photo de la moto"
-              className="w-full h-auto max-h-[80vh] object-contain rounded-lg"
-            />
-          )}
+      <Dialog open={isKitDialogOpen} onOpenChange={setIsKitDialogOpen}>
+        <DialogContent className="bg-zinc-900 border-zinc-800 max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
+            <DialogTitle className="text-white">Nouveau kit</DialogTitle>
+            <DialogDescription>Créer un nouveau kit de suspension</DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto min-h-0 -mx-6 px-6">
+            <div className="space-y-4 pb-4">
+              <div className="space-y-2">
+                <Label className="text-zinc-400">Nom *</Label>
+                <Input
+                  value={newKit.name}
+                  onChange={(e) => setNewKit((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="Ex: Setup Sable"
+                  className="bg-zinc-800 border-zinc-700"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-zinc-400">Sport</Label>
+                  <select
+                    value={newKit.sportType}
+                    onChange={(e) =>
+                      setNewKit((prev) => ({ ...prev, sportType: e.target.value }))
+                    }
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white"
+                  >
+                    <option value="">Sélectionner</option>
+                    {SPORT_TYPES.map((type) => (
+                      <option key={type.value} value={type.value}>
+                        {type.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-zinc-400">Terrain</Label>
+                  <select
+                    value={newKit.terrainType}
+                    onChange={(e) =>
+                      setNewKit((prev) => ({ ...prev, terrainType: e.target.value }))
+                    }
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white"
+                  >
+                    <option value="">Sélectionner</option>
+                    {TERRAIN_TYPES.map((type) => (
+                      <option key={type.value} value={type.value}>
+                        {type.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <Separator className="bg-zinc-800" />
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="aftermarket"
+                    checked={!newKit.isStockSuspension}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setNewKit((prev) => ({
+                          ...prev,
+                          isStockSuspension: false,
+                          forkBrand: "",
+                          forkModel: "",
+                          shockBrand: "",
+                          shockModel: "",
+                        }));
+                      } else {
+                        const stockSusp = selectedMoto
+                          ? getStockSuspension(selectedMoto.brand)
+                          : null;
+                        setNewKit((prev) => ({
+                          ...prev,
+                          isStockSuspension: true,
+                          forkBrand: stockSusp?.forkBrand || "",
+                          forkModel: stockSusp?.forkModel || "",
+                          shockBrand: stockSusp?.shockBrand || "",
+                          shockModel: stockSusp?.shockModel || "",
+                        }));
+                      }
+                    }}
+                    className="w-4 h-4 rounded border-zinc-600 bg-zinc-800"
+                  />
+                  <Label htmlFor="aftermarket" className="text-zinc-300">
+                    Suspensions aftermarket
+                  </Label>
+                </div>
+
+                {!newKit.isStockSuspension && (
+                  <div className="grid grid-cols-2 gap-4 p-3 bg-zinc-800/50 rounded-lg">
+                    <div className="space-y-2">
+                      <Label className="text-zinc-400 text-xs">Fourche</Label>
+                      <select
+                        value={newKit.forkBrand}
+                        onChange={(e) =>
+                          setNewKit((prev) => ({
+                            ...prev,
+                            forkBrand: e.target.value,
+                            forkModel: "",
+                          }))
+                        }
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm"
+                      >
+                        <option value="">Marque</option>
+                        {getForkBrands().map((brand) => (
+                          <option key={brand} value={brand}>
+                            {brand}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-zinc-400 text-xs">Amortisseur</Label>
+                      <select
+                        value={newKit.shockBrand}
+                        onChange={(e) =>
+                          setNewKit((prev) => ({
+                            ...prev,
+                            shockBrand: e.target.value,
+                            shockModel: "",
+                          }))
+                        }
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm"
+                      >
+                        <option value="">Marque</option>
+                        {getShockBrands().map((brand) => (
+                          <option key={brand} value={brand}>
+                            {brand}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <Separator className="bg-zinc-800" />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-zinc-400 text-xs">Ressort fourche</Label>
+                  <Input
+                    value={newKit.forkSpringRate}
+                    onChange={(e) =>
+                      setNewKit((prev) => ({ ...prev, forkSpringRate: e.target.value }))
+                    }
+                    placeholder="0.44 kg/mm"
+                    className="bg-zinc-800 border-zinc-700 h-9 text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-zinc-400 text-xs">Ressort amortisseur</Label>
+                  <Input
+                    value={newKit.shockSpringRate}
+                    onChange={(e) =>
+                      setNewKit((prev) => ({ ...prev, shockSpringRate: e.target.value }))
+                    }
+                    placeholder="48 N/mm"
+                    className="bg-zinc-800 border-zinc-700 h-9 text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="shrink-0 pt-4 border-t border-zinc-800">
+            <Button
+              onClick={handleSaveKit}
+              disabled={!newKit.name || isLoading}
+              className="w-full bg-purple-600 hover:bg-purple-500"
+            >
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Plus className="h-4 w-4 mr-2" />
+              )}
+              Créer
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
-      {/* Clickers MX Dialog */}
-      <Dialog open={!!clickersKitId} onOpenChange={() => setClickersKitId(null)}>
-        <DialogContent className="bg-zinc-950 border-zinc-800 !w-[90vw] !max-w-[1800px] h-[90vh] overflow-y-auto p-0">
-          <DialogHeader className="sr-only">
-            <DialogTitle>Clickers MX - Réglages suspension</DialogTitle>
-            <DialogDescription>
-              Ajustez vos réglages de suspension avec le système Clickers MX
+      <Dialog
+        open={!!renameKitId}
+        onOpenChange={() => {
+          setRenameKitId(null);
+          setRenameKitName("");
+        }}
+      >
+        <DialogContent className="bg-zinc-900 border-zinc-800 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-white">Renommer le kit</DialogTitle>
+            <DialogDescription className="text-zinc-500">
+              Entrez le nouveau nom pour ce kit de suspension.
             </DialogDescription>
           </DialogHeader>
-          {clickersKitId && moto && (() => {
-            const kit = moto.kits?.find(k => k._id === clickersKitId);
-            if (!kit) return null;
-            
-            const settings = {
-              forkCompression: kit.forkCompression ?? kit.baseForkCompression ?? 10,
-              forkRebound: kit.forkRebound ?? kit.baseForkRebound ?? 10,
-              shockCompressionLow: kit.shockCompressionLow ?? kit.baseShockCompressionLow ?? 10,
-              shockCompressionHigh: kit.shockCompressionHigh ?? kit.baseShockCompressionHigh ?? 10,
-              shockRebound: kit.shockRebound ?? kit.baseShockRebound ?? 10,
-            };
-            
-            const ranges = {
-              maxForkCompression: kit.maxForkCompression ?? 25,
-              maxForkRebound: kit.maxForkRebound ?? 25,
-              maxShockCompressionLow: kit.maxShockCompressionLow ?? 25,
-              maxShockCompressionHigh: kit.maxShockCompressionHigh ?? 25,
-              maxShockRebound: kit.maxShockRebound ?? 25,
-            };
-            
-            return (
-              <div className="p-8">
-                <ClickersPanel
-                  motoId={moto._id}
-                  kitId={kit._id}
-                  initialSettings={settings}
-                  ranges={ranges}
-                  forkBrand={kit.forkBrand || stockSuspension?.forkBrand}
-                  shockBrand={kit.shockBrand || stockSuspension?.shockBrand}
-                  kitName={kit.name}
-                  isDefault={kit.isDefault}
-                  motoBrand={moto.brand}
-                  motoModel={moto.model}
-                />
-              </div>
-            );
-          })()}
+          <div className="py-4">
+            <Input
+              value={renameKitName}
+              onChange={(e) => setRenameKitName(e.target.value)}
+              placeholder="Nom du kit"
+              className="bg-zinc-800 border-zinc-700"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleRenameKit();
+              }}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRenameKitId(null);
+                setRenameKitName("");
+              }}
+              className="border-zinc-700"
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={handleRenameKit}
+              disabled={!renameKitName.trim()}
+              className="bg-purple-600 hover:bg-purple-500"
+            >
+              Renommer
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </SidebarProvider>

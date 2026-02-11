@@ -391,7 +391,7 @@ export function ProfileSidebar({ onSendMessage }: ProfileSidebarProps) {
               </h3>
               <div 
                 className="flex items-center gap-3 px-3 py-2 rounded-lg bg-zinc-800/50 border border-zinc-700 cursor-pointer hover:border-purple-500/50 hover:bg-zinc-800 transition-colors"
-                onClick={() => router.push(`/motos?selected=${currentMoto._id}`)}
+                onClick={() => router.push(`/motos/${currentMoto._id}`)}
               >
                 <BrandLogo brand={currentMoto.brand} size="md" />
                 <div className="flex-1">

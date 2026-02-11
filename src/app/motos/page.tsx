@@ -441,8 +441,7 @@ export default function MotosPage() {
 
   // Open moto modal
   const handleOpenMotoModal = (motoId: Id<"motos">) => {
-    setSelectedMotoId(motoId);
-    setIsModalOpen(true);
+    router.push(`/motos/${motoId}`);
   };
 
   // Handlers
@@ -484,9 +483,8 @@ export default function MotosPage() {
         ...clickRanges,
       });
       setIsAddMotoDialogOpen(false);
-      setSelectedMotoId(motoId);
-      setIsModalOpen(true);
       setNewMoto({ brand: "", model: "", year: 2024, isStockSuspension: true, customForkBrand: "", customForkModel: "", customShockBrand: "", customShockModel: "", suspensionNotes: "" });
+      router.push(`/motos/${motoId}`);
     } catch (error) {
       console.error("Erreur lors de la création:", error);
     } finally {
