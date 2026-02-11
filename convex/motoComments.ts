@@ -92,3 +92,23 @@ export const create = mutation({
     });
   },
 });
+
+// Supprimer un commentaire moto (propriétaire uniquement)
+export const remove = mutation({
+  args: {
+    userId: v.id("users"),
+    commentId: v.id("motoComments"),
+  },
+  handler: async (ctx, args) => {
+    const comment = await ctx.db.get(args.commentId);
+    if (!comment) {
+      throw new Error("Commentaire introuvable");
+    }
+    if (comment.userId !== args.userId) {
+      throw new Error("Action non autorisée");
+    }
+
+    await ctx.db.delete(args.commentId);
+    return { success: true };
+  },
+});

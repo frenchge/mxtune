@@ -228,3 +228,59 @@ export const addComment = mutation({
     });
   },
 });
+
+// Supprimer un post social (propriétaire uniquement)
+export const removePost = mutation({
+  args: {
+    userId: v.id("users"),
+    postId: v.id("socialPosts"),
+  },
+  handler: async (ctx, args) => {
+    const post = await ctx.db.get(args.postId);
+    if (!post) {
+      throw new Error("Post introuvable");
+    }
+    if (post.userId !== args.userId) {
+      throw new Error("Action non autorisée");
+    }
+
+    const [comments, likes] = await Promise.all([
+      ctx.db
+        .query("socialPostComments")
+        .withIndex("by_post", (q) => q.eq("postId", args.postId))
+        .collect(),
+      ctx.db
+        .query("socialPostLikes")
+        .withIndex("by_post", (q) => q.eq("postId", args.postId))
+        .collect(),
+    ]);
+
+    await Promise.all([
+      ...comments.map((comment) => ctx.db.delete(comment._id)),
+      ...likes.map((like) => ctx.db.delete(like._id)),
+    ]);
+    await ctx.db.delete(args.postId);
+
+    return { success: true };
+  },
+});
+
+// Supprimer un commentaire de post social (propriétaire uniquement)
+export const removeComment = mutation({
+  args: {
+    userId: v.id("users"),
+    commentId: v.id("socialPostComments"),
+  },
+  handler: async (ctx, args) => {
+    const comment = await ctx.db.get(args.commentId);
+    if (!comment) {
+      throw new Error("Commentaire introuvable");
+    }
+    if (comment.userId !== args.userId) {
+      throw new Error("Action non autorisée");
+    }
+
+    await ctx.db.delete(args.commentId);
+    return { success: true };
+  },
+});

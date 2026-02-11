@@ -28,6 +28,7 @@ import {
   Send,
   FileText,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import { Id } from "../../../convex/_generated/dataModel";
 import { BRANDS, getModelsForBrand } from "@/data/moto-models";
@@ -172,6 +173,7 @@ interface SocialPost {
 
 interface MotoComment {
   _id: Id<"motoComments">;
+  userId: Id<"users">;
   content: string;
   createdAt: number;
   user?: {
@@ -184,6 +186,7 @@ interface MotoComment {
 
 interface SocialPostComment {
   _id: Id<"socialPostComments">;
+  userId: Id<"users">;
   content: string;
   createdAt: number;
   user?: {
@@ -245,8 +248,12 @@ function MotoFeedCard({
     motoId ? { motoId } : "skip"
   );
   const createMotoComment = useMutation(api.motoComments.create);
+  const removeMotoComment = useMutation(api.motoComments.remove);
   const [commentDraft, setCommentDraft] = useState("");
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [deletingCommentId, setDeletingCommentId] = useState<Id<"motoComments"> | null>(
+    null
+  );
   const [commentError, setCommentError] = useState<string | null>(null);
 
   const displayedComments = comments ? comments.slice(-4) : [];
@@ -281,6 +288,37 @@ function MotoFeedCard({
       setCommentError(message);
     } finally {
       setIsSubmittingComment(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: Id<"motoComments">) => {
+    if (!currentUserId) return;
+    if (isMotoCommentsFeatureUnavailable) {
+      setCommentError(
+        "Commentaires indisponibles pour le moment. Synchronise Convex puis recharge."
+      );
+      return;
+    }
+
+    const shouldDelete = window.confirm(
+      "Supprimer ce commentaire ? Cette action est définitive."
+    );
+    if (!shouldDelete) return;
+
+    setDeletingCommentId(commentId);
+    setCommentError(null);
+    try {
+      await removeMotoComment({
+        userId: currentUserId,
+        commentId,
+      });
+    } catch (error) {
+      const message = isMissingPublicFunctionError(error)
+        ? "Commentaires indisponibles pour le moment. Synchronise Convex puis recharge."
+        : getErrorMessage(error, "Impossible de supprimer le commentaire.");
+      setCommentError(message);
+    } finally {
+      setDeletingCommentId(null);
     }
   };
 
@@ -474,17 +512,30 @@ function MotoFeedCard({
                     </div>
                   )}
 
-                  <div className="min-w-0 rounded-md bg-zinc-900/80 px-2.5 py-1.5">
-                    <p className="text-[10px] text-zinc-500">
-                      {commentAuthor} •{" "}
-                      {new Date(comment.createdAt).toLocaleDateString("fr-FR", {
-                        day: "2-digit",
-                        month: "2-digit",
-                      })}
-                    </p>
-                    <p className="break-words text-xs text-zinc-200">
-                      {comment.content}
-                    </p>
+                  <div className="flex min-w-0 flex-1 items-start gap-1.5">
+                    <div className="min-w-0 flex-1 rounded-md bg-zinc-900/80 px-2.5 py-1.5">
+                      <p className="text-[10px] text-zinc-500">
+                        {commentAuthor} •{" "}
+                        {new Date(comment.createdAt).toLocaleDateString("fr-FR", {
+                          day: "2-digit",
+                          month: "2-digit",
+                        })}
+                      </p>
+                      <p className="break-words text-xs text-zinc-200">
+                        {comment.content}
+                      </p>
+                    </div>
+                    {currentUserId && comment.userId === currentUserId && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteComment(comment._id)}
+                        disabled={deletingCommentId === comment._id}
+                        className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-md border border-zinc-700 bg-zinc-900/70 text-zinc-400 transition-colors hover:border-red-500/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label="Supprimer le commentaire"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -576,13 +627,21 @@ function PostFeedCard({
     postId: post._id,
   });
   const addComment = useMutation(api.socialPosts.addComment);
+  const removePost = useMutation(api.socialPosts.removePost);
+  const removePostComment = useMutation(api.socialPosts.removeComment);
 
   const [commentDraft, setCommentDraft] = useState("");
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [isDeletingPost, setIsDeletingPost] = useState(false);
+  const [deletingCommentId, setDeletingCommentId] = useState<
+    Id<"socialPostComments"> | null
+  >(null);
+  const [postError, setPostError] = useState<string | null>(null);
   const [commentError, setCommentError] = useState<string | null>(null);
 
   const displayedComments = comments ? comments.slice(-4) : [];
   const commentsCount = comments?.length ?? post.commentsCount ?? 0;
+  const canDeletePost = !!currentUserId && post.userId === currentUserId;
 
   const handleSubmitComment = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -598,6 +657,7 @@ function PostFeedCard({
     if (!content) return;
 
     setIsSubmittingComment(true);
+    setPostError(null);
     setCommentError(null);
     try {
       await addComment({
@@ -613,6 +673,64 @@ function PostFeedCard({
       setCommentError(message);
     } finally {
       setIsSubmittingComment(false);
+    }
+  };
+
+  const handleDeletePost = async () => {
+    if (!currentUserId || !canDeletePost) return;
+
+    const shouldDelete = window.confirm(
+      "Supprimer ce post ? Cette action est définitive."
+    );
+    if (!shouldDelete) return;
+
+    setIsDeletingPost(true);
+    setPostError(null);
+    setCommentError(null);
+    try {
+      await removePost({
+        userId: currentUserId,
+        postId: post._id,
+      });
+    } catch (error) {
+      const message = isMissingPublicFunctionError(error)
+        ? "Fonction sociale indisponible pour le moment. Synchronise Convex puis recharge."
+        : getErrorMessage(error, "Impossible de supprimer ce post.");
+      setPostError(message);
+    } finally {
+      setIsDeletingPost(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: Id<"socialPostComments">) => {
+    if (!currentUserId) return;
+    if (isPostCommentsFeatureUnavailable) {
+      setCommentError(
+        "Commentaires indisponibles pour le moment. Synchronise Convex puis recharge."
+      );
+      return;
+    }
+
+    const shouldDelete = window.confirm(
+      "Supprimer ce commentaire ? Cette action est définitive."
+    );
+    if (!shouldDelete) return;
+
+    setDeletingCommentId(commentId);
+    setCommentError(null);
+    setPostError(null);
+    try {
+      await removePostComment({
+        userId: currentUserId,
+        commentId,
+      });
+    } catch (error) {
+      const message = isMissingPublicFunctionError(error)
+        ? "Commentaires indisponibles pour le moment. Synchronise Convex puis recharge."
+        : getErrorMessage(error, "Impossible de supprimer le commentaire.");
+      setCommentError(message);
+    } finally {
+      setDeletingCommentId(null);
     }
   };
 
@@ -662,7 +780,20 @@ function PostFeedCard({
             {post.content}
           </p>
         </div>
+        {canDeletePost && (
+          <button
+            type="button"
+            onClick={handleDeletePost}
+            disabled={isDeletingPost}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-700 bg-zinc-900/70 text-zinc-400 transition-colors hover:border-red-500/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Supprimer le post"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        )}
       </div>
+
+      {postError && <p className="mt-2 text-xs text-red-400">{postError}</p>}
 
       <div className="mt-3 flex items-center gap-2 border-t border-zinc-800/90 pt-3">
         <button
@@ -709,13 +840,26 @@ function PostFeedCard({
                     </div>
                   )}
 
-                  <div className="min-w-0 max-w-full flex-1 overflow-hidden rounded-xl bg-zinc-900/85 px-3 py-2">
-                    <p className="text-[11px] font-medium text-zinc-400">
-                      {commentAuthor}
-                    </p>
-                    <p className="max-w-full break-all text-sm text-zinc-200">
-                      {comment.content}
-                    </p>
+                  <div className="flex min-w-0 max-w-full flex-1 items-start gap-1.5">
+                    <div className="min-w-0 max-w-full flex-1 overflow-hidden rounded-xl bg-zinc-900/85 px-3 py-2">
+                      <p className="text-[11px] font-medium text-zinc-400">
+                        {commentAuthor}
+                      </p>
+                      <p className="max-w-full break-all text-sm text-zinc-200">
+                        {comment.content}
+                      </p>
+                    </div>
+                    {currentUserId && comment.userId === currentUserId && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteComment(comment._id)}
+                        disabled={deletingCommentId === comment._id}
+                        className="mt-1 inline-flex h-7 w-7 items-center justify-center rounded-md border border-zinc-700 bg-zinc-900/70 text-zinc-400 transition-colors hover:border-red-500/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label="Supprimer le commentaire"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -992,15 +1136,17 @@ export default function ConfigsPage() {
     setGeographicZoneFilter("");
   };
 
-  const hasFilters =
-    !!brandFilter ||
-    !!modelFilter ||
-    !!sportFilter ||
-    !!terrainFilter ||
-    !!levelFilter ||
-    !!styleFilter ||
-    !!objectiveFilter ||
-    !!geographicZoneFilter;
+  const activeFilterCount = [
+    brandFilter,
+    modelFilter,
+    sportFilter,
+    terrainFilter,
+    levelFilter,
+    styleFilter,
+    objectiveFilter,
+    geographicZoneFilter,
+  ].filter((value) => Boolean(value)).length;
+  const hasFilters = activeFilterCount > 0;
   const hasMotoScopedFilters =
     !!brandFilter || !!modelFilter || !!sportFilter || !!terrainFilter;
   const isSocialFeedUnavailable =
@@ -1135,7 +1281,7 @@ export default function ConfigsPage() {
   };
 
   const selectClassName =
-    "h-10 rounded-lg border border-zinc-700 bg-zinc-800 px-3 text-sm text-zinc-100 outline-none transition-colors hover:border-zinc-600 focus:border-violet-500";
+    "h-11 w-full min-w-0 rounded-xl border border-zinc-700/80 bg-zinc-900/85 px-3 text-sm text-zinc-100 outline-none transition-all hover:border-zinc-600 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20";
 
   return (
     <>
@@ -1207,128 +1353,179 @@ export default function ConfigsPage() {
                       </TabsTrigger>
                     </TabsList>
 
-                    <div className="mt-4 rounded-xl border border-zinc-800 bg-gradient-to-r from-zinc-900/80 to-zinc-900/40 p-4">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Filter className="h-4 w-4 text-zinc-500" />
+                    <div className="mt-4 rounded-2xl border border-zinc-800/90 bg-zinc-900/55 p-4">
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <div className="inline-flex items-center gap-2 rounded-full border border-zinc-700/80 bg-zinc-900/70 px-3 py-1.5">
+                          <Filter className="h-4 w-4 text-zinc-400" />
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-300">
+                            Filtres
+                          </span>
+                          {activeFilterCount > 0 && (
+                            <span className="rounded-full border border-violet-500/40 bg-violet-500/15 px-2 py-0.5 text-[10px] font-medium text-violet-300">
+                              {activeFilterCount}
+                            </span>
+                          )}
+                        </div>
 
-                        <select
-                          value={brandFilter}
-                          onChange={(e) => {
-                            setBrandFilter(e.target.value);
-                            setModelFilter("");
-                          }}
-                          className={selectClassName}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={clearFilters}
+                          disabled={!hasFilters}
+                          className="h-8 rounded-full border border-zinc-700 bg-zinc-900/70 px-3 text-zinc-300 hover:border-zinc-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
                         >
-                          <option value="">Toutes marques</option>
-                          {BRANDS.map((brand) => (
-                            <option key={brand} value={brand}>
-                              {brand}
-                            </option>
-                          ))}
-                        </select>
+                          Effacer
+                        </Button>
+                      </div>
 
-                        <select
-                          value={modelFilter}
-                          onChange={(e) => setModelFilter(e.target.value)}
-                          disabled={!brandFilter}
-                          className={`${selectClassName} disabled:cursor-not-allowed disabled:opacity-40`}
-                        >
-                          <option value="">Tous modèles</option>
-                          {availableModels.map((model) => (
-                            <option key={model} value={model}>
-                              {model}
-                            </option>
-                          ))}
-                        </select>
-
-                        <select
-                          value={sportFilter}
-                          onChange={(e) => setSportFilter(e.target.value)}
-                          className={selectClassName}
-                        >
-                          <option value="">Tous sports</option>
-                          {SPORT_TYPES.map((sport) => (
-                            <option key={sport.value} value={sport.value}>
-                              {sport.label}
-                            </option>
-                          ))}
-                        </select>
-
-                        <select
-                          value={terrainFilter}
-                          onChange={(e) => setTerrainFilter(e.target.value)}
-                          className={selectClassName}
-                        >
-                          <option value="">Tous terrains</option>
-                          {TERRAIN_TYPES.map((terrain) => (
-                            <option key={terrain.value} value={terrain.value}>
-                              {terrain.label}
-                            </option>
-                          ))}
-                        </select>
-
-                        <select
-                          value={levelFilter}
-                          onChange={(e) => setLevelFilter(e.target.value)}
-                          className={selectClassName}
-                        >
-                          <option value="">Tous niveaux</option>
-                          {LEVELS.map((level) => (
-                            <option key={level.value} value={level.value}>
-                              {level.label}
-                            </option>
-                          ))}
-                        </select>
-
-                        <select
-                          value={styleFilter}
-                          onChange={(e) => setStyleFilter(e.target.value)}
-                          className={selectClassName}
-                        >
-                          <option value="">Tous styles</option>
-                          {STYLES.map((style) => (
-                            <option key={style.value} value={style.value}>
-                              {style.label}
-                            </option>
-                          ))}
-                        </select>
-
-                        <select
-                          value={objectiveFilter}
-                          onChange={(e) => setObjectiveFilter(e.target.value)}
-                          className={selectClassName}
-                        >
-                          <option value="">Tous objectifs</option>
-                          {OBJECTIVES.map((objective) => (
-                            <option key={objective.value} value={objective.value}>
-                              {objective.label}
-                            </option>
-                          ))}
-                        </select>
-
-                        <select
-                          value={geographicZoneFilter}
-                          onChange={(event) => setGeographicZoneFilter(event.target.value)}
-                          className={selectClassName}
-                        >
-                          <option value="">Toutes zones</option>
-                          {GEOGRAPHIC_ZONES.map((zone) => (
-                            <option key={zone.value} value={zone.value}>
-                              {zone.label}
-                            </option>
-                          ))}
-                        </select>
-
-                        {hasFilters && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={clearFilters}
-                            className="h-10 px-3 text-zinc-400 hover:text-white"
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <div className="space-y-1.5">
+                          <p className="px-1 text-[11px] font-medium uppercase tracking-[0.08em] text-zinc-500">
+                            Marque
+                          </p>
+                          <select
+                            value={brandFilter}
+                            onChange={(e) => {
+                              setBrandFilter(e.target.value);
+                              setModelFilter("");
+                            }}
+                            className={selectClassName}
                           >
-                            Effacer
-                          </Button>
-                        )}
+                            <option value="">Toutes marques</option>
+                            {BRANDS.map((brand) => (
+                              <option key={brand} value={brand}>
+                                {brand}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <p className="px-1 text-[11px] font-medium uppercase tracking-[0.08em] text-zinc-500">
+                            Modèle
+                          </p>
+                          <select
+                            value={modelFilter}
+                            onChange={(e) => setModelFilter(e.target.value)}
+                            disabled={!brandFilter}
+                            className={`${selectClassName} disabled:cursor-not-allowed disabled:opacity-40`}
+                          >
+                            <option value="">Tous modèles</option>
+                            {availableModels.map((model) => (
+                              <option key={model} value={model}>
+                                {model}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <p className="px-1 text-[11px] font-medium uppercase tracking-[0.08em] text-zinc-500">
+                            Sport
+                          </p>
+                          <select
+                            value={sportFilter}
+                            onChange={(e) => setSportFilter(e.target.value)}
+                            className={selectClassName}
+                          >
+                            <option value="">Tous sports</option>
+                            {SPORT_TYPES.map((sport) => (
+                              <option key={sport.value} value={sport.value}>
+                                {sport.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <p className="px-1 text-[11px] font-medium uppercase tracking-[0.08em] text-zinc-500">
+                            Terrain
+                          </p>
+                          <select
+                            value={terrainFilter}
+                            onChange={(e) => setTerrainFilter(e.target.value)}
+                            className={selectClassName}
+                          >
+                            <option value="">Tous terrains</option>
+                            {TERRAIN_TYPES.map((terrain) => (
+                              <option key={terrain.value} value={terrain.value}>
+                                {terrain.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <p className="px-1 text-[11px] font-medium uppercase tracking-[0.08em] text-zinc-500">
+                            Niveau
+                          </p>
+                          <select
+                            value={levelFilter}
+                            onChange={(e) => setLevelFilter(e.target.value)}
+                            className={selectClassName}
+                          >
+                            <option value="">Tous niveaux</option>
+                            {LEVELS.map((level) => (
+                              <option key={level.value} value={level.value}>
+                                {level.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <p className="px-1 text-[11px] font-medium uppercase tracking-[0.08em] text-zinc-500">
+                            Style
+                          </p>
+                          <select
+                            value={styleFilter}
+                            onChange={(e) => setStyleFilter(e.target.value)}
+                            className={selectClassName}
+                          >
+                            <option value="">Tous styles</option>
+                            {STYLES.map((style) => (
+                              <option key={style.value} value={style.value}>
+                                {style.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <p className="px-1 text-[11px] font-medium uppercase tracking-[0.08em] text-zinc-500">
+                            Objectif
+                          </p>
+                          <select
+                            value={objectiveFilter}
+                            onChange={(e) => setObjectiveFilter(e.target.value)}
+                            className={selectClassName}
+                          >
+                            <option value="">Tous objectifs</option>
+                            {OBJECTIVES.map((objective) => (
+                              <option key={objective.value} value={objective.value}>
+                                {objective.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <p className="px-1 text-[11px] font-medium uppercase tracking-[0.08em] text-zinc-500">
+                            Zone
+                          </p>
+                          <select
+                            value={geographicZoneFilter}
+                            onChange={(event) => setGeographicZoneFilter(event.target.value)}
+                            className={selectClassName}
+                          >
+                            <option value="">Toutes zones</option>
+                            {GEOGRAPHIC_ZONES.map((zone) => (
+                              <option key={zone.value} value={zone.value}>
+                                {zone.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
                     </div>
 
