@@ -10,6 +10,7 @@ import { ArrowLeft, Copy, Check, Settings2 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
+import { usernameHandle, usernameProfileHref } from "@/lib/user-display";
 
 const SPORT_TYPES = [
   { value: "enduro", label: "Enduro" },
@@ -51,6 +52,8 @@ export default function SharedConfigPage() {
   const [copied, setCopied] = useState(false);
 
   const config = useQuery(api.configs.getByShareLink, { shareLink });
+  const profileHref = usernameProfileHref(config?.user?.username);
+  const profileHandle = usernameHandle(config?.user?.username);
 
   const copyLink = () => {
     navigator.clipboard.writeText(window.location.href);
@@ -127,8 +130,8 @@ export default function SharedConfigPage() {
           )}
           {config.user && (
             <Link 
-              href={`/user/${config.user.username || config.user.name}`}
-              className="inline-flex items-center justify-center gap-2 mt-3 hover:opacity-80 transition-opacity"
+              href={profileHref || "#"}
+              className={`inline-flex items-center justify-center gap-2 mt-3 transition-opacity ${profileHref ? "hover:opacity-80" : "pointer-events-none opacity-70"}`}
             >
               {config.user.imageUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -139,7 +142,7 @@ export default function SharedConfigPage() {
                 />
               )}
               <span className="text-sm text-zinc-500 normal-case">
-                par <span className="text-purple-400 hover:text-purple-300">@{config.user.username || config.user.name}</span>
+                par <span className="text-purple-400 hover:text-purple-300">{profileHandle}</span>
               </span>
             </Link>
           )}

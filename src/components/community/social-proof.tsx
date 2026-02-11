@@ -15,6 +15,7 @@ import {
   Eye
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { usernameHandle } from "@/lib/user-display";
 
 // ===========================================
 // Badges de preuve sociale pour les configs
@@ -119,6 +120,7 @@ interface CommunityConfigHighlightProps {
   description?: string;
   author: {
     name: string;
+    username?: string;
     imageUrl?: string;
     isVerified?: boolean;
   };
@@ -154,6 +156,7 @@ export function CommunityConfigHighlight({
 }: CommunityConfigHighlightProps) {
   const isHighlyValidated = stats.validatedSessions >= 3;
   const isPopular = stats.likes >= 10 || stats.saves >= 5;
+  const authorHandle = usernameHandle(author.username);
 
   return (
     <div
@@ -180,7 +183,7 @@ export function CommunityConfigHighlight({
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={author.imageUrl}
-                alt={author.name}
+                alt={authorHandle}
                 className="h-8 w-8 rounded-full border border-zinc-700"
               />
             ) : (
@@ -190,7 +193,7 @@ export function CommunityConfigHighlight({
             )}
             <div>
               <div className="flex items-center gap-1">
-                <span className="text-sm font-medium text-white">{author.name}</span>
+                <span className="text-sm font-medium text-white">{authorHandle}</span>
                 {author.isVerified && (
                   <CheckCircle2 className="h-3.5 w-3.5 text-blue-400" />
                 )}

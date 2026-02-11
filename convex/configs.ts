@@ -115,6 +115,7 @@ export const getPublic = query({
     riderLevel: v.optional(v.string()),
     riderStyle: v.optional(v.string()),
     riderObjective: v.optional(v.string()),
+    geographicZone: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const configs = await ctx.db
@@ -153,7 +154,8 @@ export const getPublic = query({
             _id: user._id,
             name: user.name, 
             username: user.username,
-            imageUrl: user.imageUrl 
+            imageUrl: user.imageUrl,
+            geographicZone: user.geographicZone,
           } : null 
         };
       })
@@ -182,6 +184,9 @@ export const getPublic = query({
     }
     if (args.riderObjective) {
       filtered = filtered.filter(c => c.riderObjective === args.riderObjective);
+    }
+    if (args.geographicZone) {
+      filtered = filtered.filter(c => c.user?.geographicZone === args.geographicZone);
     }
     
     return filtered.slice(0, 50);
@@ -216,7 +221,8 @@ export const getByShareLink = query({
         _id: user._id,
         name: user.name, 
         username: user.username,
-        imageUrl: user.imageUrl 
+        imageUrl: user.imageUrl,
+        geographicZone: user.geographicZone,
       } : null 
     };
   },
@@ -239,7 +245,8 @@ export const getById = query({
         _id: user._id,
         name: user.name, 
         username: user.username,
-        imageUrl: user.imageUrl 
+        imageUrl: user.imageUrl,
+        geographicZone: user.geographicZone,
       } : null 
     };
   },
@@ -530,7 +537,8 @@ export const getFromFollowing = query({
             _id: user._id,
             name: user.name, 
             username: user.username,
-            imageUrl: user.imageUrl 
+            imageUrl: user.imageUrl,
+            geographicZone: user.geographicZone,
           } : null 
         };
       })

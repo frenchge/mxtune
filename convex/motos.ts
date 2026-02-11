@@ -25,6 +25,32 @@ export const getByUser = query({
   },
 });
 
+// Obtenir les dernières motos d'un utilisateur (version légère pour sidebar)
+export const getRecentByUser = query({
+  args: {
+    userId: v.id("users"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const requestedLimit = Math.floor(args.limit ?? 5);
+    const safeLimit = Math.min(Math.max(requestedLimit, 1), 10);
+
+    const motos = await ctx.db
+      .query("motos")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .take(safeLimit);
+
+    return motos.map((moto) => ({
+      _id: moto._id,
+      brand: moto.brand,
+      model: moto.model,
+      year: moto.year,
+      createdAt: moto.createdAt,
+    }));
+  },
+});
+
 // Obtenir les motos publiques d'un utilisateur
 export const getPublicByUser = query({
   args: { userId: v.id("users") },

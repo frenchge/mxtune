@@ -56,6 +56,7 @@ export const updateProfile = mutation({
     level: v.optional(v.string()),
     style: v.optional(v.string()),
     objective: v.optional(v.string()),
+    geographicZone: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await ctx.db
@@ -70,6 +71,7 @@ export const updateProfile = mutation({
       level: args.level,
       style: args.style,
       objective: args.objective,
+      geographicZone: args.geographicZone,
     });
 
     return user._id;
@@ -96,6 +98,7 @@ export const getByUsername = query({
       level: user.level,
       style: user.style,
       objective: user.objective,
+      geographicZone: user.geographicZone,
       createdAt: user.createdAt,
     };
   },

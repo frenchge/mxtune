@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useCurrentUser } from "@/hooks/use-current-user";
@@ -28,12 +28,44 @@ import {
   EyeOff,
   Bookmark,
   Save,
-  Loader2
+  Loader2,
+  MapPin,
+  MessageSquare,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { BrandLogo } from "@/components/ui/brand-logo";
 import { Id } from "../../../../convex/_generated/dataModel";
+import { GEOGRAPHIC_ZONES, getGeographicZoneLabel } from "@/data/geographic-zones";
+import { usernameHandle } from "@/lib/user-display";
+
+const MISSING_PUBLIC_FUNCTION_ERROR = "Could not find public function";
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error.length > 0) return error;
+  return fallback;
+}
+
+function isMissingPublicFunctionError(error: unknown) {
+  const message = getErrorMessage(error, "");
+  return message.includes(MISSING_PUBLIC_FUNCTION_ERROR);
+}
+
+function useSafeQuery<TData>(queryRef: unknown, args: unknown) {
+  try {
+    const data = useQuery(queryRef as never, args as never) as TData | undefined;
+    return {
+      data,
+      missingFunction: false,
+    };
+  } catch (error) {
+    return {
+      data: undefined,
+      missingFunction: isMissingPublicFunctionError(error),
+    };
+  }
+}
 
 const LEVELS = [
   { value: "débutant", label: "Débutant" },
@@ -55,6 +87,7 @@ const OBJECTIVES = [
 
 export default function UserProfilePage() {
   const params = useParams();
+  const router = useRouter();
   const username = params.username as string;
   const { user: currentUser } = useCurrentUser();
 
@@ -70,6 +103,10 @@ export default function UserProfilePage() {
   const followStats = useQuery(
     api.follows.getStats,
     user?._id ? { userId: user._id } : "skip"
+  );
+  const { missingFunction: isPrivateMessagingUnavailable } = useSafeQuery(
+    api.privateMessages.getConversations,
+    currentUser?._id ? { userId: currentUser._id } : "skip"
   );
   
   // Saved configs for own profile
@@ -100,6 +137,31 @@ export default function UserProfilePage() {
   );
 
   const toggleFollow = useMutation(api.follows.toggleFollow);
+  const getOrCreatePrivateConversation = useMutation(
+    api.privateMessages.getOrCreateConversation
+  );
+  const [isStartingPrivateMessage, setIsStartingPrivateMessage] =
+    useState(false);
+  const [privateMessageFeatureError, setPrivateMessageFeatureError] =
+    useState<string | null>(null);
+
+  useEffect(() => {
+    if (
+      isPrivateMessagingUnavailable &&
+      currentUser?._id &&
+      user?._id &&
+      currentUser._id !== user._id
+    ) {
+      setPrivateMessageFeatureError(
+        "Messagerie indisponible pour le moment. Lance `npm run convex:sync`, puis recharge."
+      );
+      return;
+    }
+
+    if (!isPrivateMessagingUnavailable) {
+      setPrivateMessageFeatureError(null);
+    }
+  }, [isPrivateMessagingUnavailable, currentUser?._id, user?._id]);
 
   const handleToggleFollow = async () => {
     if (!currentUser?._id || !user?._id) return;
@@ -107,6 +169,33 @@ export default function UserProfilePage() {
       followerId: currentUser._id, 
       followingId: user._id as Id<"users"> 
     });
+  };
+
+  const handleStartPrivateMessage = async () => {
+    if (!currentUser?._id || !user?._id || currentUser._id === user._id) return;
+    if (isPrivateMessagingUnavailable) {
+      setPrivateMessageFeatureError(
+        "Messagerie indisponible pour le moment. Lance `npm run convex:sync`, puis recharge."
+      );
+      return;
+    }
+
+    setIsStartingPrivateMessage(true);
+    setPrivateMessageFeatureError(null);
+    try {
+      const conversationId = await getOrCreatePrivateConversation({
+        userId: currentUser._id,
+        otherUserId: user._id as Id<"users">,
+      });
+      router.push(`/messages?conversationId=${conversationId}`);
+    } catch (error) {
+      const message = isMissingPublicFunctionError(error)
+        ? "Messagerie indisponible pour le moment. Lance `npm run convex:sync`, puis recharge."
+        : getErrorMessage(error, "Impossible de démarrer la conversation privée.");
+      setPrivateMessageFeatureError(message);
+    } finally {
+      setIsStartingPrivateMessage(false);
+    }
   };
 
   if (user === undefined) {
@@ -155,6 +244,10 @@ export default function UserProfilePage() {
                 amIFollowing={amIFollowing}
                 isOwnProfile={!!isOwnProfile}
                 onToggleFollow={handleToggleFollow}
+                onStartPrivateMessage={handleStartPrivateMessage}
+                isStartingPrivateMessage={isStartingPrivateMessage}
+                isPrivateMessagingUnavailable={isPrivateMessagingUnavailable}
+                privateMessageFeatureError={privateMessageFeatureError}
                 showHeader={false} 
               />
             </div>
@@ -191,6 +284,7 @@ interface ProfileContentProps {
     level?: string;
     style?: string;
     objective?: string;
+    geographicZone?: string;
   };
   configs: Array<{
     _id: string;
@@ -276,7 +370,12 @@ interface ProfileContentProps {
   isFollowingMe?: boolean;
   amIFollowing?: boolean;
   isOwnProfile: boolean;
+  initialTab?: string;
   onToggleFollow?: () => void;
+  onStartPrivateMessage?: () => void;
+  isStartingPrivateMessage?: boolean;
+  isPrivateMessagingUnavailable?: boolean;
+  privateMessageFeatureError?: string | null;
   showHeader: boolean;
 }
 
@@ -289,26 +388,57 @@ export function ProfileContent({
   isFollowingMe, 
   amIFollowing,
   isOwnProfile,
+  initialTab,
   onToggleFollow,
+  onStartPrivateMessage,
+  isStartingPrivateMessage = false,
+  isPrivateMessagingUnavailable = false,
+  privateMessageFeatureError,
   onToggleMotoVisibility,
   showHeader 
 }: ProfileContentProps) {
   const { user: currentUser, clerkUser } = useCurrentUser();
   const updateProfile = useMutation(api.users.updateProfile);
-  const [activeTab, setActiveTab] = useState("configs");
+  const resolveInitialTab = useCallback(
+    (value?: string) => {
+      const ownProfileTabs = ["profile", "configs", "saved", "motos"];
+      const publicProfileTabs = ["configs", "motos"];
+      const allowedTabs = isOwnProfile ? ownProfileTabs : publicProfileTabs;
+
+      if (value && allowedTabs.includes(value)) return value;
+      return "configs";
+    },
+    [isOwnProfile]
+  );
+  const [activeTab, setActiveTab] = useState(resolveInitialTab(initialTab));
   const [profileWeight, setProfileWeight] = useState(user.weight ?? 75);
   const [profileLevel, setProfileLevel] = useState(user.level ?? "");
   const [profileStyle, setProfileStyle] = useState(user.style ?? "");
   const [profileObjective, setProfileObjective] = useState(user.objective ?? "");
+  const [profileGeographicZone, setProfileGeographicZone] = useState(
+    user.geographicZone ?? ""
+  );
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const canEditProfile = isOwnProfile && currentUser?._id === user._id;
+
+  useEffect(() => {
+    setActiveTab(resolveInitialTab(initialTab));
+  }, [initialTab, resolveInitialTab]);
 
   useEffect(() => {
     setProfileWeight(user.weight ?? 75);
     setProfileLevel(user.level ?? "");
     setProfileStyle(user.style ?? "");
     setProfileObjective(user.objective ?? "");
-  }, [user._id, user.weight, user.level, user.style, user.objective]);
+    setProfileGeographicZone(user.geographicZone ?? "");
+  }, [
+    user._id,
+    user.weight,
+    user.level,
+    user.style,
+    user.objective,
+    user.geographicZone,
+  ]);
 
   const handleSaveProfile = async () => {
     if (!canEditProfile || !clerkUser?.id) return;
@@ -321,6 +451,7 @@ export function ProfileContent({
         level: profileLevel || undefined,
         style: profileStyle || undefined,
         objective: profileObjective || undefined,
+        geographicZone: profileGeographicZone || undefined,
       });
     } catch (error) {
       console.error("Erreur lors de la mise à jour du profil:", error);
@@ -376,7 +507,7 @@ export function ProfileContent({
           <div className="flex-1 text-center md:text-left">
             <div className="flex items-center justify-center md:justify-start gap-2">
               <h1 className="text-3xl font-bold text-white">
-                @{user.username || user.name}
+                {usernameHandle(user.username)}
               </h1>
               {isFollowingMe && (
                 <span className="text-xs font-medium text-zinc-500 bg-zinc-800 px-2 py-1 rounded-full">
@@ -429,32 +560,63 @@ export function ProfileContent({
                   {OBJECTIVES.find(o => o.value === user.objective)?.label || user.objective}
                 </Badge>
               )}
+              {user.geographicZone && (
+                <Badge variant="outline" className="border-cyan-500/30 text-cyan-300 gap-1.5 py-1.5">
+                  <MapPin className="h-3.5 w-3.5" />
+                  {getGeographicZoneLabel(user.geographicZone)}
+                </Badge>
+              )}
             </div>
 
             {/* Follow button - only for other users */}
-            {!isOwnProfile && onToggleFollow && (
-              <div className="mt-4 flex justify-center md:justify-start">
-                <Button
-                  variant={amIFollowing ? "outline" : "default"}
-                  onClick={onToggleFollow}
-                  className={amIFollowing 
-                    ? "border-purple-500/50 text-purple-400 hover:text-purple-300 hover:border-purple-400 gap-2" 
-                    : "bg-purple-500 hover:bg-purple-600 gap-2"
-                  }
-                >
-                  {amIFollowing ? (
-                    <>
-                      <UserMinus className="h-4 w-4" />
-                      Ne plus suivre
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus className="h-4 w-4" />
-                      Suivre
-                    </>
-                  )}
-                </Button>
+            {!isOwnProfile && (onToggleFollow || onStartPrivateMessage) && (
+              <div className="mt-4 flex flex-wrap justify-center md:justify-start gap-2">
+                {onToggleFollow && (
+                  <Button
+                    variant={amIFollowing ? "outline" : "default"}
+                    onClick={onToggleFollow}
+                    className={amIFollowing 
+                      ? "border-purple-500/50 text-purple-400 hover:text-purple-300 hover:border-purple-400 gap-2" 
+                      : "bg-purple-500 hover:bg-purple-600 gap-2"
+                    }
+                  >
+                    {amIFollowing ? (
+                      <>
+                        <UserMinus className="h-4 w-4" />
+                        Ne plus suivre
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="h-4 w-4" />
+                        Suivre
+                      </>
+                    )}
+                  </Button>
+                )}
+
+                {onStartPrivateMessage && (
+                  <Button
+                    variant="outline"
+                    onClick={onStartPrivateMessage}
+                    disabled={
+                      isStartingPrivateMessage || isPrivateMessagingUnavailable
+                    }
+                    className="border-zinc-700 text-zinc-200 hover:border-violet-500 hover:text-violet-200 gap-2"
+                  >
+                    {isStartingPrivateMessage ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <MessageSquare className="h-4 w-4" />
+                    )}
+                    Envoyer un message
+                  </Button>
+                )}
               </div>
+            )}
+            {privateMessageFeatureError && (
+              <p className="mt-2 text-xs text-amber-300">
+                {privateMessageFeatureError}
+              </p>
             )}
           </div>
         </div>
@@ -666,6 +828,22 @@ export function ProfileContent({
                         </button>
                       ))}
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <span className="text-sm font-medium text-zinc-400">Zone geographique</span>
+                    <select
+                      value={profileGeographicZone}
+                      onChange={(event) => setProfileGeographicZone(event.target.value)}
+                      className="h-11 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 text-sm text-white outline-none transition-colors hover:border-zinc-600 focus:border-purple-500"
+                    >
+                      <option value="">Non renseignee</option>
+                      {GEOGRAPHIC_ZONES.map((zone) => (
+                        <option key={zone.value} value={zone.value}>
+                          {zone.label}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <Button

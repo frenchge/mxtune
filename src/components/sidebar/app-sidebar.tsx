@@ -3,7 +3,7 @@
 import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useCurrentUser } from "@/hooks/use-current-user";
@@ -23,6 +23,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { UserButton } from "@clerk/nextjs";
 import {
   User,
@@ -32,6 +37,7 @@ import {
   Plus,
   Trash2,
   MoreHorizontal,
+  ChevronDown,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -40,19 +46,117 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Id } from "../../../convex/_generated/dataModel";
+import { BrandLogo } from "@/components/ui/brand-logo";
+import { usernameHandle } from "@/lib/user-display";
+
+interface SidebarShortcut {
+  label: string;
+  href: string;
+  pathname: string;
+  tab?: string;
+  feedTab?: string;
+}
+
+const PROFILE_SHORTCUTS: SidebarShortcut[] = [
+  {
+    label: "Mon Profil",
+    href: "/profil?tab=profile",
+    pathname: "/profil",
+    tab: "profile",
+  },
+  {
+    label: "Configs",
+    href: "/profil?tab=configs",
+    pathname: "/profil",
+    tab: "configs",
+  },
+  {
+    label: "Sauvegardées",
+    href: "/profil?tab=saved",
+    pathname: "/profil",
+    tab: "saved",
+  },
+  {
+    label: "Motos",
+    href: "/profil?tab=motos",
+    pathname: "/profil",
+    tab: "motos",
+  },
+];
+
+const COMMUNITY_SHORTCUTS: SidebarShortcut[] = [
+  {
+    label: "Feed motos",
+    href: "/configs?tab=feed&feedTab=motos",
+    pathname: "/configs",
+    tab: "feed",
+    feedTab: "motos",
+  },
+  {
+    label: "Feed posts",
+    href: "/configs?tab=feed&feedTab=posts",
+    pathname: "/configs",
+    tab: "feed",
+    feedTab: "posts",
+  },
+  {
+    label: "Configs",
+    href: "/configs?tab=configs",
+    pathname: "/configs",
+    tab: "configs",
+  },
+  {
+    label: "Suivi",
+    href: "/configs?tab=suivi",
+    pathname: "/configs",
+    tab: "suivi",
+  },
+  {
+    label: "Sauvegardées",
+    href: "/configs?tab=sauvegardees",
+    pathname: "/configs",
+    tab: "sauvegardees",
+  },
+  {
+    label: "Mes configs",
+    href: "/configs?tab=mes-configs",
+    pathname: "/configs",
+    tab: "mes-configs",
+  },
+];
 
 export function AppSidebar() {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { user } = useCurrentUser();
+  const [openNavSections, setOpenNavSections] = React.useState<
+    Record<string, boolean>
+  >({
+    "/profil": pathname === "/profil" || pathname.startsWith("/profil/"),
+    "/motos": pathname === "/motos" || pathname.startsWith("/motos/"),
+    "/configs": pathname === "/configs" || pathname.startsWith("/configs/"),
+  });
 
   const conversations = useQuery(
     api.conversations.getByUser,
     user?._id ? { userId: user._id } : "skip"
   );
+  const motos = useQuery(api.motos.getByUser, user?._id ? { userId: user._id } : "skip");
+  const recentMotos = React.useMemo(() => {
+    if (motos === undefined) return undefined;
+    return [...motos]
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 5);
+  }, [motos]);
 
   const createConversation = useMutation(api.conversations.create);
   const deleteConversation = useMutation(api.conversations.remove);
+
+  const isProfileActive = pathname === "/profil" || pathname.startsWith("/profil/");
+  const isMotosActive = pathname === "/motos" || pathname.startsWith("/motos/");
+  const isMessagesActive = pathname === "/messages" || pathname.startsWith("/messages/");
+  const isCommunityActive = pathname === "/configs" || pathname.startsWith("/configs/");
 
   const handleNewConversation = async () => {
     if (!user?._id) return;
@@ -94,11 +198,34 @@ export function AppSidebar() {
     return conv.title;
   };
 
-  const navItems = [
-    { title: "Profil", icon: User, href: "/profil" },
-    { title: "Mes Motos", icon: Bike, href: "/motos" },
-    { title: "Communauté", icon: Users, href: "/configs" },
-  ];
+  React.useEffect(() => {
+    setOpenNavSections((current) => ({
+      ...current,
+      "/profil":
+        current["/profil"] || pathname === "/profil" || pathname.startsWith("/profil/"),
+      "/motos":
+        current["/motos"] || pathname === "/motos" || pathname.startsWith("/motos/"),
+      "/configs":
+        current["/configs"] || pathname === "/configs" || pathname.startsWith("/configs/"),
+    }));
+  }, [pathname]);
+
+  const isShortcutActive = React.useCallback(
+    (shortcut: SidebarShortcut) => {
+      if (pathname !== shortcut.pathname) return false;
+
+      if (shortcut.tab && searchParams.get("tab") !== shortcut.tab) return false;
+      if (
+        shortcut.feedTab &&
+        searchParams.get("feedTab") !== shortcut.feedTab
+      ) {
+        return false;
+      }
+
+      return true;
+    },
+    [pathname, searchParams]
+  );
 
   return (
     <Sidebar className="border-r border-zinc-800 bg-zinc-900">
@@ -121,26 +248,209 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => {
-                const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
-                return (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isActive}
-                    className={isActive 
-                      ? "bg-purple-500/15 text-purple-300 hover:bg-purple-500/20 border-l-2 border-purple-500 rounded-l-none font-semibold" 
+              <SidebarMenuItem>
+                <Collapsible
+                  open={openNavSections["/profil"]}
+                  onOpenChange={(open) =>
+                    setOpenNavSections((current) => ({
+                      ...current,
+                      "/profil": open,
+                    }))
+                  }
+                >
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuButton
+                      isActive={isProfileActive}
+                      className={
+                        isProfileActive
+                          ? "bg-purple-500/15 text-purple-300 hover:bg-purple-500/20 border-l-2 border-purple-500 rounded-l-none font-semibold"
+                          : "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+                      }
+                    >
+                      <User
+                        className={`h-4 w-4 ${isProfileActive ? "text-purple-400" : ""}`}
+                      />
+                      <span>Profil</span>
+                      <ChevronDown
+                        className={`ml-auto h-3.5 w-3.5 transition-transform ${
+                          openNavSections["/profil"] ? "rotate-180" : "rotate-0"
+                        }`}
+                      />
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="overflow-hidden">
+                    <div className="ml-5 mt-1 space-y-1 border-l border-zinc-800 pl-2">
+                      {PROFILE_SHORTCUTS.map((shortcut) => {
+                        const shortcutActive = isShortcutActive(shortcut);
+                        return (
+                          <Link
+                            key={shortcut.href}
+                            href={shortcut.href}
+                            prefetch={true}
+                            className={`flex items-center rounded-md px-2 py-1.5 text-xs transition-colors ${
+                              shortcutActive
+                                ? "bg-violet-500/10 text-violet-300"
+                                : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                            }`}
+                          >
+                            {shortcut.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <Collapsible
+                  open={openNavSections["/motos"]}
+                  onOpenChange={(open) =>
+                    setOpenNavSections((current) => ({
+                      ...current,
+                      "/motos": open,
+                    }))
+                  }
+                >
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuButton
+                      isActive={isMotosActive}
+                      className={
+                        isMotosActive
+                          ? "bg-purple-500/15 text-purple-300 hover:bg-purple-500/20 border-l-2 border-purple-500 rounded-l-none font-semibold"
+                          : "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+                      }
+                    >
+                      <Bike
+                        className={`h-4 w-4 ${isMotosActive ? "text-purple-400" : ""}`}
+                      />
+                      <span>Mes motos</span>
+                      <ChevronDown
+                        className={`ml-auto h-3.5 w-3.5 transition-transform ${
+                          openNavSections["/motos"] ? "rotate-180" : "rotate-0"
+                        }`}
+                      />
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="overflow-hidden">
+                    <div className="ml-5 mt-1 space-y-1 border-l border-zinc-800 pl-2">
+                      {recentMotos === undefined && (
+                        <p className="px-2 py-1.5 text-xs text-zinc-500">
+                          Chargement des motos...
+                        </p>
+                      )}
+
+                      {recentMotos && recentMotos.length === 0 && (
+                        <p className="px-2 py-1.5 text-xs text-zinc-500">
+                          Aucune moto dans le garage.
+                        </p>
+                      )}
+
+                      {recentMotos?.map((moto) => (
+                        <Link
+                          key={moto._id}
+                          href={`/motos/${moto._id}`}
+                          prefetch={true}
+                          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+                        >
+                          <BrandLogo
+                            brand={moto.brand}
+                            size="sm"
+                            className="h-5 w-5 shrink-0 border border-zinc-700/70"
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">
+                              {moto.brand} {moto.model}
+                            </p>
+                            <p className="text-[10px] text-zinc-500">{moto.year}</p>
+                          </div>
+                        </Link>
+                      ))}
+
+                      <Link
+                        href="/motos"
+                        prefetch={true}
+                        className="flex items-center rounded-md px-2 py-1.5 text-xs font-medium text-violet-300 transition-colors hover:bg-violet-500/10"
+                      >
+                        Voir plus
+                      </Link>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <Collapsible
+                  open={openNavSections["/configs"]}
+                  onOpenChange={(open) =>
+                    setOpenNavSections((current) => ({
+                      ...current,
+                      "/configs": open,
+                    }))
+                  }
+                >
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuButton
+                      isActive={isCommunityActive}
+                      className={
+                        isCommunityActive
+                          ? "bg-purple-500/15 text-purple-300 hover:bg-purple-500/20 border-l-2 border-purple-500 rounded-l-none font-semibold"
+                          : "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+                      }
+                    >
+                      <Users
+                        className={`h-4 w-4 ${isCommunityActive ? "text-purple-400" : ""}`}
+                      />
+                      <span>Communauté</span>
+                      <ChevronDown
+                        className={`ml-auto h-3.5 w-3.5 transition-transform ${
+                          openNavSections["/configs"] ? "rotate-180" : "rotate-0"
+                        }`}
+                      />
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="overflow-hidden">
+                    <div className="ml-5 mt-1 space-y-1 border-l border-zinc-800 pl-2">
+                      {COMMUNITY_SHORTCUTS.map((shortcut) => {
+                        const shortcutActive = isShortcutActive(shortcut);
+                        return (
+                          <Link
+                            key={shortcut.href}
+                            href={shortcut.href}
+                            prefetch={true}
+                            className={`flex items-center rounded-md px-2 py-1.5 text-xs transition-colors ${
+                              shortcutActive
+                                ? "bg-violet-500/10 text-violet-300"
+                                : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                            }`}
+                          >
+                            {shortcut.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isMessagesActive}
+                  className={
+                    isMessagesActive
+                      ? "bg-purple-500/15 text-purple-300 hover:bg-purple-500/20 border-l-2 border-purple-500 rounded-l-none font-semibold"
                       : "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200"
-                    }
-                  >
-                    <Link href={item.href} prefetch={true}>
-                      <item.icon className={`h-4 w-4 ${isActive ? "text-purple-400" : ""}`} />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                );
-              })}
+                  }
+                >
+                  <Link href="/messages" prefetch={true}>
+                    <MessageSquare
+                      className={`h-4 w-4 ${isMessagesActive ? "text-purple-400" : ""}`}
+                    />
+                    <span>Messages</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -250,7 +560,7 @@ export function AppSidebar() {
           />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate">
-              {user?.name || "Utilisateur"}
+              {usernameHandle(user?.username)}
             </p>
             <p className="text-xs text-zinc-500 truncate">
               {user?.level || "Configurer le profil"}

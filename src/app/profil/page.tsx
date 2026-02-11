@@ -4,14 +4,18 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { ProfileContent } from "@/app/user/[username]/page";
+import { useSearchParams } from "next/navigation";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
 import { Id } from "../../../convex/_generated/dataModel";
+import { usernameOrFallback } from "@/lib/user-display";
 
 export default function ProfilPage() {
   const { user } = useCurrentUser();
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab") || undefined;
 
   const configs = useQuery(
     api.users.getPublicConfigs,
@@ -41,13 +45,14 @@ export default function ProfilPage() {
   const profileUser = user
     ? {
         _id: user._id,
-        name: user.name || "",
+        name: usernameOrFallback(user.username),
         username: user.username,
         imageUrl: user.imageUrl,
         weight: user.weight,
         level: user.level,
         style: user.style,
         objective: user.objective,
+        geographicZone: user.geographicZone,
       }
     : null;
 
@@ -86,6 +91,7 @@ export default function ProfilPage() {
                   isFollowingMe={false}
                   amIFollowing={false}
                   isOwnProfile={true}
+                  initialTab={initialTab}
                   onToggleMotoVisibility={handleToggleMotoVisibility}
                   showHeader={false}
                 />

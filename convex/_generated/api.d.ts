@@ -15,8 +15,11 @@ import type * as conversations from "../conversations.js";
 import type * as files from "../files.js";
 import type * as follows from "../follows.js";
 import type * as messages from "../messages.js";
+import type * as motoComments from "../motoComments.js";
 import type * as motos from "../motos.js";
+import type * as privateMessages from "../privateMessages.js";
 import type * as savedConfigs from "../savedConfigs.js";
+import type * as socialPosts from "../socialPosts.js";
 import type * as suspensionKits from "../suspensionKits.js";
 import type * as users from "../users.js";
 
@@ -34,8 +37,11 @@ declare const fullApi: ApiFromModules<{
   files: typeof files;
   follows: typeof follows;
   messages: typeof messages;
+  motoComments: typeof motoComments;
   motos: typeof motos;
+  privateMessages: typeof privateMessages;
   savedConfigs: typeof savedConfigs;
+  socialPosts: typeof socialPosts;
   suspensionKits: typeof suspensionKits;
   users: typeof users;
 }>;

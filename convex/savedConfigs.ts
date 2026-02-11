@@ -76,6 +76,7 @@ export const getByUser = query({
             name: user.name,
             username: user.username,
             imageUrl: user.imageUrl,
+            geographicZone: user.geographicZone,
           } : null,
         };
       })

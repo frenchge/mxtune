@@ -13,6 +13,7 @@ export default defineSchema({
     level: v.optional(v.string()), // "débutant", "intermédiaire", "expert"
     style: v.optional(v.string()), // "neutre", "agressif", "souple"
     objective: v.optional(v.string()), // "confort", "performance", "mixte"
+    geographicZone: v.optional(v.string()), // "idf", "nord-france", etc.
     createdAt: v.number(),
   })
     .index("by_clerk_id", ["clerkId"])
@@ -163,6 +164,31 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_conversation", ["conversationId"]),
 
+  // Conversations privées entre users
+  privateConversations: defineTable({
+    participantAId: v.id("users"),
+    participantBId: v.id("users"),
+    createdById: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastMessageAt: v.optional(v.number()),
+    lastMessageSenderId: v.optional(v.id("users")),
+    lastMessageSnippet: v.optional(v.string()),
+    participantALastReadAt: v.optional(v.number()),
+    participantBLastReadAt: v.optional(v.number()),
+  })
+    .index("by_pair", ["participantAId", "participantBId"])
+    .index("by_participant_a_updated", ["participantAId", "updatedAt"])
+    .index("by_participant_b_updated", ["participantBId", "updatedAt"]),
+
+  // Messages privés
+  privateMessages: defineTable({
+    conversationId: v.id("privateConversations"),
+    senderId: v.id("users"),
+    content: v.string(),
+    createdAt: v.number(),
+  }).index("by_conversation_created_at", ["conversationId", "createdAt"]),
+
   // Configs sauvegardées (par d'autres users)
   savedConfigs: defineTable({
     userId: v.id("users"), // L'user qui sauvegarde
@@ -195,6 +221,49 @@ export default defineSchema({
     .index("by_config", ["configId"])
     .index("by_user", ["userId"])
     .index("by_user_config", ["userId", "configId"]),
+
+  // Commentaires sur les motos du feed
+  motoComments: defineTable({
+    motoId: v.id("motos"),
+    userId: v.id("users"),
+    content: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_moto", ["motoId"])
+    .index("by_user", ["userId"]),
+
+  // Posts texte du feed social
+  socialPosts: defineTable({
+    userId: v.id("users"),
+    content: v.string(),
+    likes: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_created_at", ["createdAt"]),
+
+  // Likes sur posts sociaux
+  socialPostLikes: defineTable({
+    postId: v.id("socialPosts"),
+    userId: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_post", ["postId"])
+    .index("by_user", ["userId"])
+    .index("by_user_post", ["userId", "postId"]),
+
+  // Commentaires sur posts sociaux
+  socialPostComments: defineTable({
+    postId: v.id("socialPosts"),
+    userId: v.id("users"),
+    content: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_post", ["postId"])
+    .index("by_user", ["userId"]),
 
   // Système de followers
   follows: defineTable({

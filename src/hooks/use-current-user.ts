@@ -19,7 +19,7 @@ export function useCurrentUser() {
       upsertUser({
         clerkId: clerkUser.id,
         email: clerkUser.primaryEmailAddress?.emailAddress || "",
-        name: clerkUser.fullName || clerkUser.firstName || "Utilisateur",
+        name: clerkUser.username || "rider",
         username: clerkUser.username || undefined,
         imageUrl: clerkUser.imageUrl,
       });

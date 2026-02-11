@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "npm run convex:sync && next dev",
+    "convex:sync": "convex dev --once",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
