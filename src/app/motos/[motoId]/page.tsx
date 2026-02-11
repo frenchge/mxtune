@@ -267,6 +267,7 @@ export default function MotoDetailPage() {
 
   const selectedMoto = useQuery(api.motos.getById, { motoId });
 
+  const updateMoto = useMutation(api.motos.update);
   const deleteMoto = useMutation(api.motos.remove);
   const createKit = useMutation(api.suspensionKits.create);
   const deleteKit = useMutation(api.suspensionKits.remove);
@@ -290,12 +291,14 @@ export default function MotoDetailPage() {
 
   const [isKitDialogOpen, setIsKitDialogOpen] = useState(false);
   const [isConfigChoiceDialogOpen, setIsConfigChoiceDialogOpen] = useState(false);
+  const [isPublicConfirmOpen, setIsPublicConfirmOpen] = useState(false);
   const [renameKitId, setRenameKitId] = useState<Id<"suspensionKits"> | null>(null);
   const [renameKitName, setRenameKitName] = useState("");
   const [isLaunchingAssistedConfig, setIsLaunchingAssistedConfig] = useState(false);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isUploadingMotoImage, setIsUploadingMotoImage] = useState(false);
+  const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
   const [removingMotoImageId, setRemovingMotoImageId] = useState<Id<"_storage"> | null>(
     null
   );
@@ -316,6 +319,7 @@ export default function MotoDetailPage() {
   });
 
   const isOwner = user?._id === selectedMoto?.userId;
+  const isMotoPublic = selectedMoto?.isPublic === true;
   const stockSuspension = selectedMoto?.brand
     ? getStockSuspension(selectedMoto.brand)
     : null;
@@ -381,6 +385,34 @@ export default function MotoDetailPage() {
     } catch (error) {
       console.error("Erreur lors de la suppression:", error);
     }
+  };
+
+  const handleSetMotoVisibility = async (isPublic: boolean) => {
+    if (!selectedMoto) return;
+
+    setIsUpdatingVisibility(true);
+    try {
+      await updateMoto({
+        motoId: selectedMoto._id,
+        isPublic,
+      });
+      if (isPublic) {
+        setIsPublicConfirmOpen(false);
+      }
+    } catch (error) {
+      console.error("Erreur lors de la mise à jour de la visibilité:", error);
+    } finally {
+      setIsUpdatingVisibility(false);
+    }
+  };
+
+  const handleVisibilityButtonClick = () => {
+    if (!selectedMoto) return;
+    if (isMotoPublic) {
+      void handleSetMotoVisibility(false);
+      return;
+    }
+    setIsPublicConfirmOpen(true);
   };
 
   const handleOpenKitDialog = () => {
@@ -737,6 +769,24 @@ export default function MotoDetailPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={handleVisibilityButtonClick}
+                    disabled={isUpdatingVisibility}
+                    className={`h-8 border-zinc-700 ${
+                      isMotoPublic
+                        ? "bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
+                        : "bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+                    }`}
+                  >
+                    {isUpdatingVisibility ? (
+                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                    ) : null}
+                    {isMotoPublic
+                      ? "Rendre cette moto privée"
+                      : "Rendre cette moto publique"}
+                  </Button>
+
                   <Button
                     variant="outline"
                     onClick={() => router.push("/motos")}
@@ -1589,6 +1639,39 @@ export default function MotoDetailPage() {
                 <Plus className="h-4 w-4 mr-2" />
               )}
               Créer
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isPublicConfirmOpen} onOpenChange={setIsPublicConfirmOpen}>
+        <DialogContent className="bg-zinc-900 border-zinc-800 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-white">Rendre cette moto publique ?</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Cette moto sera visible par tous les membres de la communauté.
+              Ils pourront consulter les informations de la moto, ses kits et ses
+              configs partagées.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-center gap-2 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsPublicConfirmOpen(false)}
+              className="border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+              disabled={isUpdatingVisibility}
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={() => void handleSetMotoVisibility(true)}
+              className="bg-purple-600 hover:bg-purple-500"
+              disabled={isUpdatingVisibility}
+            >
+              {isUpdatingVisibility ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              Confirmer
             </Button>
           </div>
         </DialogContent>
