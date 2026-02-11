@@ -617,11 +617,8 @@ function PostFeedCard({
   };
 
   return (
-    <article className="group relative w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-zinc-800/90 bg-zinc-900/75 p-4 transition-colors hover:border-zinc-700">
-      <div className="pointer-events-none absolute -right-20 -top-24 h-80 w-[58%] rounded-full bg-violet-500/20 blur-3xl opacity-55" />
-      <div className="pointer-events-none absolute -left-16 bottom-0 h-48 w-[44%] rounded-full bg-indigo-500/12 blur-3xl opacity-45" />
-
-      <div className="relative flex items-start gap-3">
+    <article className="group w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-zinc-800/90 bg-zinc-900/75 p-4 transition-colors hover:border-zinc-700">
+      <div className="flex items-start gap-3">
         {post.user?.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -667,7 +664,7 @@ function PostFeedCard({
         </div>
       </div>
 
-      <div className="relative mt-3 flex items-center gap-2 border-t border-zinc-800/90 pt-3">
+      <div className="mt-3 flex items-center gap-2 border-t border-zinc-800/90 pt-3">
         <button
           type="button"
           onClick={onLike}
@@ -687,7 +684,7 @@ function PostFeedCard({
         </span>
       </div>
 
-      <div className="relative mt-3 rounded-xl border border-zinc-800/90 bg-zinc-950/40 p-3">
+      <div className="mt-3 rounded-xl border border-zinc-800/90 bg-zinc-950/40 p-3">
         {isPostCommentsFeatureUnavailable && (
           <p className="mb-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-300">
             Les commentaires sont temporairement indisponibles sur ce backend.
@@ -1490,9 +1487,12 @@ export default function ConfigsPage() {
                             )}
                             <form
                               onSubmit={handleCreatePost}
-                              className="rounded-2xl border border-zinc-800/90 bg-gradient-to-br from-zinc-900/90 to-zinc-900/60 p-4"
+                              className="relative overflow-hidden rounded-2xl border border-zinc-800/90 bg-zinc-900/80 p-4"
                             >
-                              <div className="flex items-start gap-2.5">
+                              <div className="pointer-events-none absolute -right-20 -top-24 h-80 w-[58%] rounded-full bg-violet-500/20 blur-3xl opacity-55" />
+                              <div className="pointer-events-none absolute -left-16 bottom-0 h-48 w-[44%] rounded-full bg-indigo-500/12 blur-3xl opacity-45" />
+
+                              <div className="relative flex items-start gap-2.5">
                                 {user?.imageUrl ? (
                                   // eslint-disable-next-line @next/next/no-img-element
                                   <img

@@ -54,7 +54,6 @@ interface SidebarShortcut {
   href: string;
   pathname: string;
   tab?: string;
-  feedTab?: string;
 }
 
 const PROFILE_SHORTCUTS: SidebarShortcut[] = [
@@ -86,18 +85,10 @@ const PROFILE_SHORTCUTS: SidebarShortcut[] = [
 
 const COMMUNITY_SHORTCUTS: SidebarShortcut[] = [
   {
-    label: "Feed motos",
-    href: "/configs?tab=feed&feedTab=motos",
+    label: "Feed",
+    href: "/configs?tab=feed",
     pathname: "/configs",
     tab: "feed",
-    feedTab: "motos",
-  },
-  {
-    label: "Feed posts",
-    href: "/configs?tab=feed&feedTab=posts",
-    pathname: "/configs",
-    tab: "feed",
-    feedTab: "posts",
   },
   {
     label: "Configs",
@@ -220,12 +211,6 @@ export function AppSidebar() {
       if (pathname !== shortcut.pathname) return false;
 
       if (shortcut.tab && searchParams.get("tab") !== shortcut.tab) return false;
-      if (
-        shortcut.feedTab &&
-        searchParams.get("feedTab") !== shortcut.feedTab
-      ) {
-        return false;
-      }
 
       return true;
     },
