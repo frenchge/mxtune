@@ -617,8 +617,9 @@ function PostFeedCard({
   };
 
   return (
-    <article className="group relative overflow-hidden rounded-2xl border border-zinc-800/90 bg-zinc-900/75 p-4 transition-colors hover:border-zinc-700">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(168,85,247,0.12),transparent_52%)]" />
+    <article className="group relative w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-zinc-800/90 bg-zinc-900/75 p-4 transition-colors hover:border-zinc-700">
+      <div className="pointer-events-none absolute -right-20 -top-24 h-80 w-[58%] rounded-full bg-violet-500/20 blur-3xl opacity-55" />
+      <div className="pointer-events-none absolute -left-16 bottom-0 h-48 w-[44%] rounded-full bg-indigo-500/12 blur-3xl opacity-45" />
 
       <div className="relative flex items-start gap-3">
         {post.user?.imageUrl ? (
@@ -660,7 +661,7 @@ function PostFeedCard({
             </span>
           </div>
 
-          <p className="mt-2 whitespace-pre-wrap break-words text-[15px] leading-6 text-zinc-100">
+          <p className="mt-2 max-w-full whitespace-pre-wrap break-all text-[15px] leading-6 text-zinc-100">
             {post.content}
           </p>
         </div>
@@ -711,11 +712,11 @@ function PostFeedCard({
                     </div>
                   )}
 
-                  <div className="min-w-0 rounded-xl bg-zinc-900/85 px-3 py-2">
+                  <div className="min-w-0 max-w-full flex-1 overflow-hidden rounded-xl bg-zinc-900/85 px-3 py-2">
                     <p className="text-[11px] font-medium text-zinc-400">
                       {commentAuthor}
                     </p>
-                    <p className="break-words text-sm text-zinc-200">
+                    <p className="max-w-full break-all text-sm text-zinc-200">
                       {comment.content}
                     </p>
                   </div>
@@ -727,7 +728,7 @@ function PostFeedCard({
           )}
         </div>
 
-        <form className="mt-3 flex items-center gap-2.5" onSubmit={handleSubmitComment}>
+        <form className="mt-3 flex min-w-0 items-center gap-2.5" onSubmit={handleSubmitComment}>
           {currentUserImageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -741,7 +742,7 @@ function PostFeedCard({
             </div>
           )}
 
-          <div className="flex flex-1 items-center gap-2">
+          <div className="flex min-w-0 flex-1 max-w-full items-center gap-2">
             <input
               type="text"
               value={commentDraft}
@@ -1159,10 +1160,10 @@ export default function ConfigsPage() {
       <SignedIn>
         <SidebarProvider>
           <AppSidebar />
-          <SidebarInset className="flex h-screen flex-col bg-zinc-950">
+          <SidebarInset className="flex h-screen flex-col overflow-x-hidden bg-zinc-950">
             <div className="flex flex-1 overflow-hidden">
-              <div className="flex-1 overflow-auto p-8">
-                <div className="mx-auto max-w-6xl space-y-6">
+              <div className="flex-1 overflow-y-auto overflow-x-hidden p-8">
+                <div className="mx-auto w-full min-w-0 max-w-6xl space-y-6">
                   <div>
                     <h1 className="text-2xl font-bold text-white">COMMUNAUTÉ</h1>
                     <p className="mt-1 text-zinc-400">
@@ -1472,8 +1473,8 @@ export default function ConfigsPage() {
                           )}
                         </TabsContent>
 
-                        <TabsContent value="posts" className="mt-4">
-                          <div className="w-full space-y-4">
+                        <TabsContent value="posts" className="mt-4 overflow-x-hidden">
+                          <div className="w-full min-w-0 space-y-4 overflow-x-hidden">
                             {isSocialFeedUnavailable && (
                               <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
                                 Le feed social n&apos;est pas disponible sur ce backend.
@@ -1550,7 +1551,7 @@ export default function ConfigsPage() {
                             {!isSocialFeedUnavailable &&
                             socialPosts &&
                             socialPosts.length > 0 ? (
-                              <div className="space-y-4">
+                              <div className="w-full min-w-0 space-y-4 overflow-x-hidden">
                                 {socialPosts.map((post) => (
                                   <PostFeedCard
                                     key={post._id}
